@@ -275,7 +275,7 @@ export default function App() {
     showToast("Tous les arrivages supprimés");
   };
 
-  // Import Excel
+  // Import Excel (format Geslot Moorea)
   const handleExcelImport = (e) => {
     const file = e.target.files[0]; if (!file) return;
     setImporting(true);
@@ -283,33 +283,77 @@ export default function App() {
     reader.onload = async (ev) => {
       try {
         const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
-        const wb = XLSX.read(ev.target.result,{type:'array'});
+        const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-        const arr=[]; let lot="",fourn="",date="";
-        for (let i=0;i<raw.length;i++) {
-          const row=raw[i];
-          const colA=String(row[0]||'').trim(),colB=String(row[1]||'').trim(),colC=String(row[2]||'').trim(),colD=String(row[3]||'').trim();
-          if(colA.startsWith('Lot')||colB.match(/^\d{8}$/)){
-            const m=(colA+' '+colB).match(/(\d{7,8})/);if(m)lot=m[1];
-            fourn=colD||colC;
-            for(const c of row){const s=String(c||'');const dm=s.match(/(\d{2}\/\d{2}\/\d{4})/);if(dm){date=dm[1];break;}}
+        const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        
+        const arr = [];
+        let lot = "", fournisseur = "", date = "";
+        
+        for (let i = 0; i < raw.length; i++) {
+          const row = raw[i];
+          const colA = String(row[0] || '').trim();
+          const colB = String(row[1] || '').trim();
+          const colC = String(row[2] || '').trim();
+          const colE = String(row[4] || '').trim();
+          const colF = row[5];
+          const colI = row[8];
+
+          // Ligne de lot : colB = "Lot", colC = numéro, colE = fournisseur
+          if (colB === 'Lot' && colC) {
+            lot = colC;
+            fournisseur = colE;
             continue;
           }
-          if(colA==='SL'||colA==='SL e'||colA.toLowerCase().includes('totaux'))continue;
-          if(colC.toLowerCase().includes('libelle')||colC==='')continue;
-          const slM=colA.match(/^(\d{1,2})$/);
-          if(slM&&lot&&colC){
-            const nb=row[4]?String(row[4]).trim():'';
-            const pn=row[8]?String(row[8]).replace(',','.').trim():'';
-            if(colC.length>3&&nb)arr.push({lot_interne:lot,lot_fournisseur:"",fournisseur:fourn,date,produit:colC,variete:"",origine:"",quantite:nb,unite:"colis",poids_net:pn,poids_colis:"",transporteur:"",temp_annoncee:"",commentaire:colB?`Code: ${colB}`:""});
+
+          // Ligne date arrivée
+          if (colB === 'Date arrivée' && row[2]) {
+            if (row[2] instanceof Date) {
+              const d = row[2];
+              date = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+            } else {
+              const dm = String(row[2]).match(/(\d{2}\/\d{2}\/\d{4})/);
+              if (dm) date = dm[1];
+            }
+            continue;
+          }
+
+          // Ignorer lignes header/totaux
+          if (!colA || colB === 'Numero S/lot' || colB === 'Totaux' || 
+              colA.startsWith('Article') || colC === 'libelle article') continue;
+
+          // Ligne produit : colA = code article, colC = libellé, colF = nb colis
+          if (colA && colC && colF && lot) {
+            const nbColis = parseInt(colF) || 0;
+            const poids = colI ? String(colI) : "";
+            if (colC.length > 2 && nbColis > 0) {
+              arr.push({
+                lot_interne: lot,
+                lot_fournisseur: "",
+                fournisseur,
+                date,
+                produit: colC,
+                variete: "",
+                origine: "",
+                quantite: String(nbColis),
+                unite: "colis",
+                poids_net: poids,
+                poids_colis: "",
+                transporteur: "",
+                temp_annoncee: "",
+                commentaire: colA ? `Code: ${colA}` : "",
+              });
+            }
           }
         }
-        if(arr.length===0){showToast("Aucun arrivage détecté","err");setImporting(false);return;}
-        setPreview(arr);setImporting(false);
-      } catch(err){showToast("Erreur : "+err.message,"err");setImporting(false);}
+        
+        if (arr.length === 0) { showToast("Aucun arrivage détecté","err"); setImporting(false); return; }
+        setPreview(arr);
+        setImporting(false);
+      } catch(err) { showToast("Erreur : " + err.message, "err"); setImporting(false); }
     };
-    reader.readAsArrayBuffer(file); e.target.value="";
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
   };
 
   const confirmImport = async () => {
