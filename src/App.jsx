@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, update, remove } from "firebase/database";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyCT-IBSscTk35HfEhg45VSoxRtXIcHJYHQ",
@@ -15,7 +15,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
-const auth = getAuth(app);
 
 const C = {
   bg:"#f0f4f1", header:"#111", white:"#ffffff",
@@ -193,16 +192,8 @@ function applyFilters(list, f) {
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [authUser, setAuthUser]     = useState(null);
-  const [userInfo, setUserInfo]     = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode]     = useState("login");
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
-  const [prenom, setPrenom]         = useState("");
-  const [nom, setNom]               = useState("");
-  const [roleReg, setRoleReg]       = useState("");
-  const [authError, setAuthError]   = useState("");
+  const authUser = { uid: "default" };
+  const [userInfo, setUserInfo]     = useState({ prenom: "Agréeur", nom: "Moorea", role: "agréeur" });
 
   const [managerMode, setManagerMode] = useState("dashboard");
   const [page, setPage]             = useState("saisie");
@@ -228,18 +219,7 @@ export default function App() {
   const INIT_FILTERS = { produit:"", fournisseur:"", origine:"", statut:"tous" };
   const [filters, setFilters]       = useState(INIT_FILTERS);
 
-  // ── AUTH ────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setAuthUser(user);
-        const snap = await new Promise(res => onValue(ref(db,`users/${user.uid}`), res, {onlyOnce:true}));
-        setUserInfo(snap.val() || {});
-      } else { setAuthUser(null); setUserInfo(null); }
-      setAuthLoading(false);
-    });
-    return () => unsub();
-  }, []);
+  // auth removed
 
   useEffect(() => {
     const unsub = onValue(ref(db,"arrivages"), (snap) => {
@@ -262,25 +242,7 @@ export default function App() {
     <div style={{ position:"fixed", top:16, right:16, zIndex:1100, background:toast.type==="err"?C.red:C.greenLight, color:toast.type==="err"?C.redText:C.greenDark, border:`1px solid ${toast.type==="err"?C.redBorder:C.greenBorder}`, borderRadius:12, padding:"12px 20px", fontWeight:600, fontSize:14, boxShadow:"0 4px 20px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
   ) : null;
 
-  // ── AUTH HANDLERS ───────────────────────────────────────────────────────────
-  const handleLogin = async () => {
-    setAuthError("");
-    try { await signInWithEmailAndPassword(auth, email, password); }
-    catch(e) { setAuthError("Email ou mot de passe incorrect"); }
-  };
-
-  const handleRegister = async () => {
-    setAuthError("");
-    if (!prenom||!nom||!roleReg) { setAuthError("Remplissez tous les champs"); return; }
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await update(ref(db,`users/${cred.user.uid}`), {prenom,nom,role:roleReg,email,createdAt:Date.now()});
-    } catch(e) {
-      setAuthError(e.code==="auth/email-already-in-use"?"Email déjà utilisé":"Erreur : "+e.message);
-    }
-  };
-
-  const handleLogout = async () => { await signOut(auth); setPage("saisie"); setManagerMode("dashboard"); };
+  // auth handlers removed
 
   // ── DERIVED ──────────────────────────────────────────────────────────────────
   const enAttente = arrivages.filter(a=>a.statut==="en attente");
@@ -294,7 +256,7 @@ export default function App() {
     const now = new Date();
     await push(ref(db,"arrivages"), {
       ...form,
-      statut:"en attente", acheteur:displayName, acheteurId:authUser.uid,
+      statut:"en attente", acheteur:displayName, acheteurId:"default",
       date:now.toLocaleDateString("fr-FR"), timestamp:Date.now(), notes:{}, obsAgr:""
     });
     setForm(INIT_FORM);
@@ -563,45 +525,7 @@ export default function App() {
     showToast("Agrément conservé en attente — ajoutez la photo","ok");
   };
 
-  // ── AUTH SCREEN ──────────────────────────────────────────────────────────────
-  if (authLoading) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:C.textMuted,fontWeight:500}}>🌿 Chargement...</p></div>;
-
-  if (!authUser) return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:"2rem",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <div style={{...card,width:420,margin:0}}>
-        <div style={{background:C.header,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"center"}}><Logo/></div>
-        <div style={{...cardTop,textAlign:"center"}}>
-          <p style={{margin:0,fontWeight:700,fontSize:16,color:C.greenDark}}>{authMode==="login"?"Connexion":"Créer un compte"}</p>
-          <p style={{margin:"4px 0 0",fontSize:12,color:C.textMuted}}>Gestion des arrivages · Fruits & Légumes</p>
-        </div>
-        <div style={{...cardBody,padding:"24px"}}>
-          {authError&&<div style={{background:C.red,border:`1px solid ${C.redBorder}`,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:C.redText,fontWeight:600}}>{authError}</div>}
-          {authMode==="register"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-            <Field label="Prénom" required><input value={prenom} onChange={e=>setPrenom(e.target.value)} placeholder="Marie" style={inputStyle}/></Field>
-            <Field label="Nom" required><input value={nom} onChange={e=>setNom(e.target.value)} placeholder="Dupont" style={inputStyle}/></Field>
-          </div>}
-          <Field label="Email" required><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="marie@moorea.fr" style={inputStyle}/></Field>
-          <Field label="Mot de passe" required><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} onKeyDown={e=>e.key==="Enter"&&(authMode==="login"?handleLogin():handleRegister())}/></Field>
-          {authMode==="register"&&<Field label="Rôle" required>
-            <div style={{display:"flex",gap:8}}>
-              {ROLES.map(r=><button key={r.id} onClick={()=>setRoleReg(r.id)} style={{flex:1,padding:"10px 4px",borderRadius:10,cursor:"pointer",border:`2px solid ${roleReg===r.id?C.green:C.greenBorder}`,background:roleReg===r.id?C.greenLight:C.white,color:roleReg===r.id?C.greenDark:C.textMuted,fontWeight:roleReg===r.id?700:400,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",gap:3,fontSize:12}}>
-                <span style={{fontSize:18}}>{r.icon}</span>{r.label}
-              </button>)}
-            </div>
-          </Field>}
-          <button onClick={authMode==="login"?handleLogin:handleRegister} style={{width:"100%",padding:"13px",background:C.green,color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:"'Segoe UI',system-ui,sans-serif",marginTop:4}}>
-            {authMode==="login"?"Se connecter →":"Créer mon compte →"}
-          </button>
-          <p style={{textAlign:"center",marginTop:16,fontSize:13,color:C.textMuted}}>
-            {authMode==="login"?"Pas encore de compte ?":"Déjà un compte ?"}
-            <button onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthError("");}} style={{background:"none",border:"none",color:C.green,fontWeight:600,cursor:"pointer",marginLeft:6,fontSize:13}}>
-              {authMode==="login"?"S'inscrire":"Se connecter"}
-            </button>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  // auth screen removed
 
   if (dbLoading) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:C.textMuted,fontWeight:500}}>🌿 Chargement...</p></div>;
 
@@ -617,7 +541,7 @@ export default function App() {
           <p style={{margin:0,fontSize:11,color:"#aaa",textTransform:"capitalize"}}>{role}</p>
         </div>
         <div style={{width:36,height:36,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#fff"}}>{displayName.slice(0,2).toUpperCase()}</div>
-        <button onClick={handleLogout} style={{fontSize:12,padding:"6px 12px",borderRadius:8,cursor:"pointer",background:"transparent",border:"1px solid #444",color:"#aaa",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>Déconnexion</button>
+        
       </div>
     </div>
   );
