@@ -193,7 +193,7 @@ function applyFilters(list, f) {
 
 export default function App() {
   const authUser = { uid: "default" };
-  const [userInfo, setUserInfo]     = useState({ prenom: "Agréeur", nom: "Moorea", role: "agréeur" });
+  const [userInfo, setUserInfo]     = useState({ prenom: "Moorea", nom: "", role: "manager" });
 
   const [managerMode, setManagerMode] = useState("dashboard");
   const [page, setPage]             = useState("saisie");
@@ -1306,6 +1306,13 @@ export default function App() {
             <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
           </div>
 
+          {/* Bouton nouvel arrivage */}
+          <button onClick={()=>setPage("saisie")} style={{width:"100%",marginBottom:12,padding:"13px",background:C.green,color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            ➕ Nouvel arrivage
+          </button>
+          <button onClick={()=>setPage("import")} style={{width:"100%",marginBottom:16,padding:"13px",background:C.white,color:C.green,border:`2px solid ${C.greenBorder}`,borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            📊 Import Excel
+          </button>
           {/* Bouton hors liste */}
           <button onClick={()=>setHorsListeMode(true)} style={{width:"100%",marginBottom:16,padding:"13px",background:"#fff3e0",color:"#e65100",border:"1.5px solid #ffcc80",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             ⚠️ Signaler un litige hors liste
