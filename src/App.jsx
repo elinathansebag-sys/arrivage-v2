@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, update, remove } from "firebase/database";
 
-
 const firebaseConfig = {
   apiKey: "AIzaSyCT-IBSscTk35HfEhg45VSoxRtXIcHJYHQ",
   authDomain: "rungis-arrivages.firebaseapp.com",
@@ -193,7 +192,7 @@ function applyFilters(list, f) {
 
 export default function App() {
   const authUser = { uid: "default" };
-  const [userInfo, setUserInfo]     = useState({ prenom: "Moorea", nom: "", role: "manager" });
+  const userInfo = { prenom: "Moorea", nom: "", role: "manager" };
 
   const [managerMode, setManagerMode] = useState("dashboard");
   const [page, setPage]             = useState("saisie");
@@ -219,7 +218,7 @@ export default function App() {
   const INIT_FILTERS = { produit:"", fournisseur:"", origine:"", statut:"tous" };
   const [filters, setFilters]       = useState(INIT_FILTERS);
 
-  // auth removed
+
 
   useEffect(() => {
     const unsub = onValue(ref(db,"arrivages"), (snap) => {
@@ -242,7 +241,7 @@ export default function App() {
     <div style={{ position:"fixed", top:16, right:16, zIndex:1100, background:toast.type==="err"?C.red:C.greenLight, color:toast.type==="err"?C.redText:C.greenDark, border:`1px solid ${toast.type==="err"?C.redBorder:C.greenBorder}`, borderRadius:12, padding:"12px 20px", fontWeight:600, fontSize:14, boxShadow:"0 4px 20px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
   ) : null;
 
-  // auth handlers removed
+
 
   // ── DERIVED ──────────────────────────────────────────────────────────────────
   const enAttente = arrivages.filter(a=>a.statut==="en attente");
@@ -256,7 +255,7 @@ export default function App() {
     const now = new Date();
     await push(ref(db,"arrivages"), {
       ...form,
-      statut:"en attente", acheteur:displayName, acheteurId:"default",
+      statut:"en attente", acheteur:"Moorea", acheteurId:"default",
       date:now.toLocaleDateString("fr-FR"), timestamp:Date.now(), notes:{}, obsAgr:""
     });
     setForm(INIT_FORM);
@@ -525,9 +524,8 @@ export default function App() {
     showToast("Agrément conservé en attente — ajoutez la photo","ok");
   };
 
-  // auth screen removed
 
-  if (dbLoading) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:C.textMuted,fontWeight:500}}>🌿 Chargement...</p></div>;
+
 
   // ── SHARED LAYOUT COMPONENTS ─────────────────────────────────────────────────
 
@@ -952,372 +950,93 @@ export default function App() {
   ) : null;
 
   // ── MANAGER ───────────────────────────────────────────────────────────────────
-  if (role==="manager") {
-    const filtered = applyFilters(arrivages, filters);
-    const total=arrivages.length, valides=arrivages.filter(a=>a.statut==="validé").length;
-    const reserves=arrivages.filter(a=>a.statut==="sous réserve").length, refuses=arrivages.filter(a=>a.statut==="refusé").length;
-    const byFourn={};
-    arrivages.forEach(a=>{if(!a.fournisseur)return;if(!byFourn[a.fournisseur])byFourn[a.fournisseur]={total:0,valides:0,refuses:0,reserves:0};byFourn[a.fournisseur].total++;if(a.statut==="validé")byFourn[a.fournisseur].valides++;if(a.statut==="refusé")byFourn[a.fournisseur].refuses++;if(a.statut==="sous réserve")byFourn[a.fournisseur].reserves++;});
-    const fournList=Object.entries(byFourn).sort((a,b)=>b[1].total-a[1].total);
-    const byAgreeur={};
-    arrivages.filter(a=>a.agréeur).forEach(a=>{if(!byAgreeur[a.agréeur])byAgreeur[a.agréeur]={total:0,valides:0,refuses:0,reserves:0};byAgreeur[a.agréeur].total++;if(a.statut==="validé")byAgreeur[a.agréeur].valides++;if(a.statut==="refusé")byAgreeur[a.agréeur].refuses++;if(a.statut==="sous réserve")byAgreeur[a.agréeur].reserves++;});
-    const alertes=arrivages.filter(a=>a.statut==="refusé"||a.statut==="sous réserve");
+  // ── UNIFIED RENDER ───────────────────────────────────────────────────────────
+  const filteredEA = applyFilters(enAttente, filters);
+  const filteredTraites = applyFilters(traites, filters);
 
-    if (agreeMode&&selectedLot) return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><PhotoMissingPopup/><Header/>
-        <AgrémentForm arrivage={selectedLot} onBack={()=>{setAgreeMode(false);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} onSubmit={attemptValidation}/>
-      </div>
-    );
-
-    if (selectedLot) return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <FicheLot a={selectedLot} isManager={true} onBack={()=>setSelectedLot(null)}/>
-      </div>
-    );
-
-    // Mode acheteur
-    if (managerMode==="acheteur") return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
-          <NavTabs extra={<BackManagerBtn/>}/>
-          {page==="saisie"&&<SaisieForm/>}
-          {page==="import"&&<ImportView/>}
-          {page==="suivi"&&<>
-            <div style={{display:"flex",gap:12,marginBottom:16}}>
-              <StatCard label="Total" value={arrivages.length} color={C.green}/>
-              <StatCard label="En attente" value={enAttente.length} color="#e6a817"/>
-              <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
-              <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
-            </div>
-            <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
-            {applyFilters(arrivages,filters).map(a=><ArrivageCard key={a.id} a={a} showDelete={true}/>)}
-          </>}
-        </div>
-      </div>
-    );
-
-    // Mode agréeur
-    if (managerMode==="agreeur") {
-      if (selected) return (
-        <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-          <Toast/><PhotoMissingPopup/><Header/>
-          <AgrémentForm arrivage={selected} onBack={()=>{setSelected(null);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} onSubmit={async(id)=>{await attemptValidation(id);setSelected(null);}}/>
-        </div>
-      );
-      const filteredEA = applyFilters(enAttente, filters);
-      return (
-        <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-          <Toast/><Header/>
-          <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <p style={{fontWeight:700,fontSize:18,margin:0,color:C.text}}>✅ Mode agréeur</p>
-              <BackManagerBtn/>
-            </div>
-            <div style={{display:"flex",gap:12,marginBottom:16}}>
-              <StatCard label="À traiter" value={enAttente.length} color="#e6a817"/>
-              <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
-              <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
-            </div>
-            <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
-            {filteredEA.length===0?<div style={{textAlign:"center",padding:"2.5rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}><div style={{fontSize:32,marginBottom:8}}>✅</div><p style={{margin:0,fontWeight:700,color:C.greenDark}}>Tout est traité !</p></div>
-            :filteredEA.map(a=>(
-              <div key={a.id} onClick={()=>{setSelected(a);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} style={{...card,cursor:"pointer",borderLeft:"4px solid #e6a817"}}>
-                <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <p style={{margin:"0 0 6px",fontWeight:700,fontSize:16,color:C.greenDark}}>{a.produit}{a.variete&&` · ${a.variete}`}</p>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Pill>🏭 {a.fournisseur}</Pill><Pill>📦 {a.quantite} {a.unite}</Pill>{a.lot_interne&&<Pill>🔖 {a.lot_interne}</Pill>}{a.origine&&<Pill>🌍 {a.origine}</Pill>}</div>
-                  </div>
-                  <span style={{fontSize:20,color:C.textMuted}}>›</span>
-                </div>
-                <div style={{...cardBody,paddingTop:10,paddingBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <p style={{margin:0,fontSize:12,color:C.textMuted}}>Saisi par <strong>{a.acheteur}</strong> · {a.date}</p>
-                  <Badge status="en attente"/>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    // Back-office manager
-    return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/>
-        <Header extraNav={
-          <div style={{display:"flex",gap:6}}>
-            {["dashboard","alertes","fournisseurs","agreeurs","historique"].map(p=>(
-              <button key={p} onClick={()=>setPage(p)} style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,border:"none",background:page===p?"rgba(255,255,255,0.2)":"transparent",color:page===p?"#fff":"#aaa",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                {{dashboard:"📊 Dashboard",alertes:`🚨 Alertes${alertes.length>0?" ("+alertes.length+")":""}`,fournisseurs:"🏭 Fournisseurs",agreeurs:"✅ Agréeurs",historique:"📋 Historique"}[p]}
-              </button>
-            ))}
-          </div>
-        }/>
-        <div style={{maxWidth:1000,margin:"0 auto",padding:"0 20px 40px"}}>
-
-          {/* Mode quick-access buttons */}
-          <div style={{display:"flex",gap:10,marginBottom:24}}>
-            <button onClick={()=>{setManagerMode("acheteur");setPage("saisie");}} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 18px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700,background:C.greenLight,color:C.greenDark,border:`1.5px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>🛒 Mode Acheteur</button>
-            <button onClick={()=>setManagerMode("agreeur")} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 18px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700,background:enAttente.length>0?"#fff8e6":C.pillBg,color:enAttente.length>0?"#7d5a00":C.textMuted,border:`1.5px solid ${enAttente.length>0?"#ffe08a":C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>✅ Mode Agréeur {enAttente.length>0&&<span style={{background:"#e6a817",color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11}}>{enAttente.length}</span>}</button>
-          </div>
-
-          {page==="dashboard"&&<>
-            <p style={{fontWeight:700,fontSize:18,margin:"0 0 20px",color:C.text}}>📊 Tableau de bord</p>
-            <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-              <StatCard label="Total arrivages" value={total} color={C.green}/>
-              <StatCard label="Validés" value={valides} color={C.greenDark} sub={`${total>0?Math.round(valides/total*100):0}%`}/>
-              <StatCard label="Sous réserve" value={reserves} color="#e6a817" sub={`${total>0?Math.round(reserves/total*100):0}%`}/>
-              <StatCard label="Refus litige" value={refuses} color={C.redText} sub={`${total>0?Math.round(refuses/total*100):0}%`}/>
-            </div>
-            <div style={{display:"flex",gap:12,marginBottom:20}}>
-              <StatCard label="En attente" value={enAttente.length} color="#e6a817"/>
-              <StatCard label="Fournisseurs" value={Object.keys(byFourn).length} color={C.green}/>
-              <StatCard label="Agréeurs actifs" value={Object.keys(byAgreeur).length} color={C.greenDark}/>
-            </div>
-            {alertes.length>0&&<div style={{background:C.red,border:`1px solid ${C.redBorder}`,borderRadius:14,padding:"14px 18px",marginBottom:20}}>
-              <p style={{margin:"0 0 8px",fontWeight:700,color:C.redText}}>🚨 {alertes.length} litige{alertes.length>1?"s":""} en cours</p>
-              {alertes.slice(0,3).map(a=><p key={a.id} style={{margin:"4px 0",fontSize:13,color:C.redText,cursor:"pointer",textDecoration:"underline"}} onClick={()=>setSelectedLot(a)}>{a.statut==="refusé"?"❌":"⚠️"} {a.produit} — {a.fournisseur} ({a.date})</p>)}
-            </div>}
-          </>}
-
-          {page==="alertes"&&<>
-            <p style={{fontWeight:700,fontSize:18,margin:"0 0 20px",color:C.text}}>🚨 Alertes refus & litiges</p>
-            {alertes.length===0&&<p style={{color:C.textMuted,fontStyle:"italic"}}>Aucun litige en cours</p>}
-            {alertes.map(a=><ArrivageCard key={a.id} a={a} onClick={()=>setSelectedLot(a)} showDelete={true}/>)}
-          </>}
-
-          {page==="fournisseurs"&&<>
-            <p style={{fontWeight:700,fontSize:18,margin:"0 0 20px",color:C.text}}>🏭 Statistiques par fournisseur</p>
-            {fournList.map(([fourn,stats])=>(
-              <div key={fourn} style={card}>
-                <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>{fourn}</p>
-                  <span style={{fontSize:13,color:C.textMuted}}>{stats.total} arrivage{stats.total>1?"s":""}</span>
-                </div>
-                <div style={{...cardBody,display:"flex",gap:10}}>
-                  <div style={{flex:1,textAlign:"center",background:C.greenLight,borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:C.greenDark,fontWeight:600}}>VALIDÉS</p><p style={{margin:0,fontSize:20,fontWeight:700,color:C.greenDark}}>{stats.valides}</p><p style={{margin:0,fontSize:11,color:C.greenDark}}>{stats.total>0?Math.round(stats.valides/stats.total*100):0}%</p></div>
-                  <div style={{flex:1,textAlign:"center",background:"#fff8e6",borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:"#7d5a00",fontWeight:600}}>RÉSERVES</p><p style={{margin:0,fontSize:20,fontWeight:700,color:"#7d5a00"}}>{stats.reserves}</p><p style={{margin:0,fontSize:11,color:"#7d5a00"}}>{stats.total>0?Math.round(stats.reserves/stats.total*100):0}%</p></div>
-                  <div style={{flex:1,textAlign:"center",background:C.red,borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:C.redText,fontWeight:600}}>REFUS</p><p style={{margin:0,fontSize:20,fontWeight:700,color:C.redText}}>{stats.refuses}</p><p style={{margin:0,fontSize:11,color:C.redText}}>{stats.total>0?Math.round(stats.refuses/stats.total*100):0}%</p></div>
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {page==="agreeurs"&&<>
-            <p style={{fontWeight:700,fontSize:18,margin:"0 0 20px",color:C.text}}>✅ Historique par agréeur</p>
-            {Object.entries(byAgreeur).map(([agr,stats])=>(
-              <div key={agr} style={card}>
-                <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#fff"}}>{agr.slice(0,2).toUpperCase()}</div>
-                    <p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>{agr}</p>
-                  </div>
-                  <span style={{fontSize:13,color:C.textMuted}}>{stats.total} contrôle{stats.total>1?"s":""}</span>
-                </div>
-                <div style={{...cardBody,display:"flex",gap:10}}>
-                  <div style={{flex:1,textAlign:"center",background:C.greenLight,borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:C.greenDark,fontWeight:600}}>VALIDÉS</p><p style={{margin:0,fontSize:20,fontWeight:700,color:C.greenDark}}>{stats.valides}</p></div>
-                  <div style={{flex:1,textAlign:"center",background:"#fff8e6",borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:"#7d5a00",fontWeight:600}}>RÉSERVES</p><p style={{margin:0,fontSize:20,fontWeight:700,color:"#7d5a00"}}>{stats.reserves}</p></div>
-                  <div style={{flex:1,textAlign:"center",background:C.red,borderRadius:10,padding:"10px"}}><p style={{margin:"0 0 2px",fontSize:11,color:C.redText,fontWeight:600}}>REFUS</p><p style={{margin:0,fontSize:20,fontWeight:700,color:C.redText}}>{stats.refuses}</p></div>
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {page==="historique"&&<>
-            <p style={{fontWeight:700,fontSize:18,margin:"0 0 16px",color:C.text}}>📋 Historique complet</p>
-            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
-              <select value={filters.statut||"tous"} onChange={e=>setFilters({...filters,statut:e.target.value})} style={{...inputStyle,width:"auto"}}>
-                <option value="tous">Tous statuts</option><option value="en attente">En attente</option><option value="validé">Validé</option><option value="sous réserve">Sous réserve</option><option value="refusé">Refus litige</option>
-              </select>
-            </div>
-            <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <p style={{fontSize:13,color:C.textMuted,margin:0}}>{filtered.length} résultat{filtered.length>1?"s":""}</p>
-              {arrivages.length>0&&<button onClick={deleteAll} style={{background:C.red,color:C.redText,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"7px 14px",fontWeight:600,fontSize:12,cursor:"pointer"}}>🗑 Tout supprimer</button>}
-            </div>
-            {filtered.map(a=><ArrivageCard key={a.id} a={a} onClick={()=>setSelectedLot(a)} showDelete={true}/>)}
-          </>}
-        </div>
-      </div>
-    );
-  }
-
-  // ── ACHETEUR ──────────────────────────────────────────────────────────────────
-  if (role==="acheteur") {
-    if (page==="saisie") return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}><NavTabs/><SaisieForm/></div>
-      </div>
-    );
-    if (page==="import") return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}><NavTabs/><ImportView/></div>
-      </div>
-    );
-    return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
-          <NavTabs/>
-          <div style={{display:"flex",gap:12,marginBottom:16}}>
-            <StatCard label="Total" value={arrivages.length} color={C.green}/>
-            <StatCard label="En attente" value={enAttente.length} color="#e6a817"/>
-            <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
-            <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
-          </div>
-          <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
-          {arrivages.length>0&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}><button onClick={deleteAll} style={{background:C.red,color:C.redText,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"8px 16px",fontWeight:600,fontSize:13,cursor:"pointer"}}>🗑 Tout supprimer</button></div>}
-          {applyFilters(arrivages,filters).length===0&&<div style={{textAlign:"center",padding:"3rem",background:C.white,borderRadius:20}}><div style={{fontSize:40,marginBottom:12}}>📭</div><p style={{margin:0,fontWeight:600,color:C.textMuted}}>Aucun résultat</p></div>}
-          {applyFilters(arrivages,filters).map(a=><ArrivageCard key={a.id} a={a} showDelete={true}/>)}
-        </div>
-      </div>
-    );
-  }
-
-  // ── AGRÉEUR ───────────────────────────────────────────────────────────────────
-  if (role==="agréeur") {
-
-    // Formulaire hors liste
-    if (horsListeMode) return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
-          <button onClick={()=>{setHorsListeMode(false);setHorsListe(INIT_HORS_LISTE);}} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textMuted,fontSize:14,padding:"0 0 16px",display:"flex",alignItems:"center",gap:4}}>‹ Retour</button>
-
-          {/* Banner */}
-          <div style={{background:"#fff3e0",border:"1.5px solid #ffcc80",borderRadius:14,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:24}}>⚠️</span>
-            <div>
-              <p style={{margin:0,fontWeight:700,fontSize:14,color:"#e65100"}}>Rapport hors liste</p>
-              <p style={{margin:"2px 0 0",fontSize:12,color:"#bf360c"}}>Ce produit n'est pas dans la liste d'agrément — le rapport sera enregistré et envoyé au service qualité.</p>
-            </div>
-          </div>
-
-          <Section title="Identification du produit" icon="🏷️" defaultOpen>
+  if (horsListeMode) return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      <Toast/><PhotoMissingPopup/>
+      <Header extraNav={<button onClick={()=>setHorsListeMode(false)} style={{padding:"9px 20px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600,border:`2px solid ${C.greenBorder}`,background:C.white,color:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>← Retour</button>}/>
+      <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
+        <div style={{...card}}>
+          <div style={{...cardTop}}><p style={{margin:0,fontWeight:700,fontSize:16,color:C.greenDark}}>⚠️ Signaler un litige hors liste</p></div>
+          <div style={{...cardBody}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
               <Field label="Produit" required><input value={horsListe.produit} onChange={e=>setHorsListe({...horsListe,produit:e.target.value})} placeholder="Ex : Tomate grappe" style={inputStyle}/></Field>
-              <Field label="Variété"><input value={horsListe.variete} onChange={e=>setHorsListe({...horsListe,variete:e.target.value})} placeholder="Ex : Grappe 500g" style={inputStyle}/></Field>
               <Field label="Fournisseur" required><input value={horsListe.fournisseur} onChange={e=>setHorsListe({...horsListe,fournisseur:e.target.value})} placeholder="Ex : PICVERT" style={inputStyle}/></Field>
-              <Field label="Origine"><input value={horsListe.origine} onChange={e=>setHorsListe({...horsListe,origine:e.target.value})} placeholder="Ex : Espagne" style={inputStyle}/></Field>
-              <Field label="N° Lot interne"><input value={horsListe.lot_interne} onChange={e=>setHorsListe({...horsListe,lot_interne:e.target.value})} placeholder="Ex : 20240401-01" style={inputStyle}/></Field>
-              <Field label="N° Lot fournisseur" required><input value={horsListe.lot_fournisseur_litige} onChange={e=>setHorsListe({...horsListe,lot_fournisseur_litige:e.target.value})} placeholder="Ex : FR-2024-001234" style={inputStyle}/></Field>
-              <Field label="Quantité">
-                <div style={{display:"flex",gap:8}}>
-                  <input type="number" value={horsListe.quantite} onChange={e=>setHorsListe({...horsListe,quantite:e.target.value})} placeholder="0" style={{...inputStyle,flex:1}}/>
-                  <select value={horsListe.unite} onChange={e=>setHorsListe({...horsListe,unite:e.target.value})} style={{...inputStyle,width:90}}><option>colis</option><option>kg</option><option>tonne</option><option>palette</option></select>
-                </div>
-              </Field>
-              <Field label="Transporteur"><input value={horsListe.transporteur} onChange={e=>setHorsListe({...horsListe,transporteur:e.target.value})} placeholder="Ex : Transgourmet" style={inputStyle}/></Field>
+              <Field label="N° Lot interne"><input value={horsListe.lot_interne} onChange={e=>setHorsListe({...horsListe,lot_interne:e.target.value})} style={inputStyle}/></Field>
+              <Field label="N° Lot fournisseur" required><input value={horsListe.lot_fournisseur_litige} onChange={e=>setHorsListe({...horsListe,lot_fournisseur_litige:e.target.value})} style={inputStyle}/></Field>
+              <Field label="Origine"><input value={horsListe.origine} onChange={e=>setHorsListe({...horsListe,origine:e.target.value})} style={inputStyle}/></Field>
+              <Field label="Quantité"><div style={{display:"flex",gap:8}}><input type="number" value={horsListe.quantite} onChange={e=>setHorsListe({...horsListe,quantite:e.target.value})} style={{...inputStyle,flex:1}}/><select value={horsListe.unite} onChange={e=>setHorsListe({...horsListe,unite:e.target.value})} style={{...inputStyle,width:90}}><option>colis</option><option>kg</option></select></div></Field>
             </div>
-          </Section>
-
-          <Section title="Contrôle qualité" icon="🔍" defaultOpen>
-            {/* Qualité visuelle */}
-            <div style={{background:horsListe.qualite>0?NOTE_BG[horsListe.qualite]:C.pillBg,border:`1px solid ${horsListe.qualite>0?NOTE_COLORS[horsListe.qualite]+"44":C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <p style={{margin:0,fontWeight:700,fontSize:14,color:C.text}}>👁 Qualité visuelle</p>
-                {horsListe.qualite>0&&<span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:12,background:NOTE_BG[horsListe.qualite],color:NOTE_COLORS[horsListe.qualite]}}>{NOTE_LABELS[horsListe.qualite]}</span>}
+            <Field label="Décision">
+              <div style={{display:"flex",gap:8}}>
+                {["sous réserve","refusé"].map(d=><button key={d} onClick={()=>setHorsListe({...horsListe,decision:d})} style={{flex:1,padding:"10px",borderRadius:10,cursor:"pointer",border:`2px solid ${horsListe.decision===d?(d==="refusé"?C.redText:"#e6a817"):"#ddd"}`,background:horsListe.decision===d?(d==="refusé"?C.red:C.amber):C.white,color:horsListe.decision===d?(d==="refusé"?C.redText:C.amberText):C.textMuted,fontWeight:700,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>{d==="refusé"?"❌ Refus":"⚠️ Réserve"}</button>)}
               </div>
-              <div style={{display:"flex",gap:6}}>{[1,2,3,4,5].map(n=><NoteBtn key={n} n={n} selected={horsListe.qualite} onChange={v=>setHorsListe({...horsListe,qualite:v})}/>)}</div>
-            </div>
-            {/* Température */}
-            <div style={{background:parseFloat(horsListe.temperature||0)>15?C.orange:C.pillBg,border:`1px solid ${parseFloat(horsListe.temperature||0)>15?C.orangeBorder:C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:parseFloat(horsListe.temperature||0)>15?C.orangeText:C.text}}>🌡 Température mesurée {parseFloat(horsListe.temperature||0)>15?"⚠️":""}</p>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <input type="number" value={horsListe.temperature} onChange={e=>setHorsListe({...horsListe,temperature:e.target.value})} placeholder="Ex : 4" style={{...inputStyle,width:120}}/>
-                <span style={{fontSize:14,color:C.textMuted}}>°C</span>
-              </div>
-              {parseFloat(horsListe.temperature||0)>15&&<p style={{margin:"8px 0 0",fontSize:13,color:C.orangeText,fontWeight:600}}>⚠️ Température supérieure à 15°C — produits frais hors norme !</p>}
-            </div>
-            {/* Poids */}
-            <div style={{background:C.pillBg,border:`1px solid ${C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:C.text}}>⚖ Poids par barquette / colis</p>
-              <div style={{display:"flex",gap:12}}>
-                <div style={{flex:1}}>
-                  <p style={{margin:"0 0 5px",fontSize:12,color:C.textMuted}}>Annoncé</p>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" step="0.01" value={horsListe.poids_colis} onChange={e=>setHorsListe({...horsListe,poids_colis:e.target.value})} placeholder="0.000" style={{...inputStyle,width:120}}/><span style={{fontSize:13,color:C.textMuted}}>kg</span></div>
-                </div>
-                <div style={{flex:1}}>
-                  <p style={{margin:"0 0 5px",fontSize:12,color:C.textMuted}}>Mesuré</p>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" step="0.001" value={horsListe.poids_mesure} onChange={e=>setHorsListe({...horsListe,poids_mesure:e.target.value})} placeholder="0.000" style={{...inputStyle,width:120}}/><span style={{fontSize:13,color:C.textMuted}}>kg</span></div>
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Observations" icon="📝" defaultOpen={false}>
-            <textarea value={horsListe.observations} onChange={e=>setHorsListe({...horsListe,observations:e.target.value})} placeholder="Remarques agréeur..." rows={3} style={{...inputStyle,resize:"vertical"}}/>
-          </Section>
-
-          {/* Décision */}
-          <div style={card}>
-            <div style={cardTop}><p style={{margin:0,fontWeight:700,fontSize:14,color:C.greenDark}}>⚖️ Décision</p></div>
-            <div style={cardBody}>
-              <div style={{display:"flex",gap:10,marginBottom:16}}>
-                {[{id:"refusé",icon:"❌",label:"Refus litige"},{id:"sous réserve",icon:"⚠️",label:"Sous réserve"}].map(d=>{
-                  const active=horsListe.decision===d.id;
-                  const bg=active?(d.id==="refusé"?C.red:"#fff8e6"):C.white;
-                  const border=active?(d.id==="refusé"?C.redText:"#e6a817"):(d.id==="refusé"?C.redBorder:C.greenBorder);
-                  const color=active?(d.id==="refusé"?C.redText:"#7d5a00"):C.textMuted;
-                  return <button key={d.id} onClick={()=>setHorsListe({...horsListe,decision:d.id})} style={{flex:1,padding:"12px 8px",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,background:bg,color,border:`2px solid ${border}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span style={{fontSize:16}}>{d.icon}</span>{d.label}</button>;
-                })}
-              </div>
-              <div style={{background:horsListe.decision==="refusé"?C.red:"#fff8e6",border:`1px solid ${horsListe.decision==="refusé"?C.redBorder:"#ffe08a"}`,borderRadius:12,padding:"14px",marginBottom:16}}>
-                <Field label="Raison" required>
-                  <textarea value={horsListe.raison} onChange={e=>setHorsListe({...horsListe,raison:e.target.value})} placeholder="Décrivez le problème constaté..." rows={3} style={{...inputStyle,resize:"vertical",borderColor:horsListe.decision==="refusé"?C.redBorder:"#ffe08a"}}/>
-                </Field>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                  <input type="number" min="0" max="100" value={horsListe.pct} onChange={e=>setHorsListe({...horsListe,pct:e.target.value})} placeholder="%" style={{...inputStyle,width:80,borderColor:horsListe.decision==="refusé"?C.redBorder:"#ffe08a"}}/>
-                  <span style={{fontSize:14,color:C.textMuted}}>{horsListe.decision==="refusé"?"% refusé":"% concerné"}</span>
-                </div>
-                <label style={{fontSize:12,fontWeight:600,color:C.textMuted,display:"block",marginBottom:5,textTransform:"uppercase"}}>📷 Photos</label>
-                <input type="file" accept="image/*" multiple onChange={e=>setHorsListe({...horsListe,photos:Array.from(e.target.files).map(f=>f.name).join(', ')})} style={{fontSize:13,color:C.text}}/>
-                {horsListe.photos&&<p style={{margin:"6px 0 0",fontSize:12,color:C.greenDark}}>✓ {horsListe.photos}</p>}
-              </div>
-              <button onClick={submitHorsListe} style={{width:"100%",padding:"14px",background:horsListe.decision==="refusé"?C.redText:"#e6a817",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                📧 Enregistrer et envoyer le rapport →
-              </button>
-            </div>
+            </Field>
+            <Field label="Raison"><textarea value={horsListe.raison} onChange={e=>setHorsListe({...horsListe,raison:e.target.value})} rows={3} style={{...inputStyle,resize:"vertical"}}/></Field>
+            <Field label="% concerné"><input type="number" min="0" max="100" value={horsListe.pct} onChange={e=>setHorsListe({...horsListe,pct:e.target.value})} style={{...inputStyle,width:100}}/></Field>
+            <Field label="📷 Photos"><input type="file" accept="image/*" multiple onChange={e=>setHorsListe({...horsListe,photos:Array.from(e.target.files).map(f=>f.name).join(', ')})} style={{fontSize:13}}/></Field>
+            <button onClick={submitHorsListe} style={{width:"100%",padding:"14px",background:horsListe.decision==="refusé"?C.redText:"#e6a817",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+              📧 Enregistrer et envoyer →
+            </button>
           </div>
         </div>
       </div>
-    );
+    </div>
+  );
 
-    if (selected) return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><PhotoMissingPopup/><Header/>
-        <AgrémentForm arrivage={selected} onBack={()=>{setSelected(null);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} onSubmit={async(id)=>{await attemptValidation(id);}}/>
-      </div>
-    );
-    const filteredEA = applyFilters(enAttente, filters);
-    const filteredTraites = applyFilters(traites, filters);
-    return (
-      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <Toast/><Header/>
-        <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
-          <div style={{display:"flex",gap:12,marginBottom:16}}>
-            <StatCard label="À traiter" value={enAttente.length} color="#e6a817"/>
-            <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
-            <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
+  if (selected) return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      <Toast/><PhotoMissingPopup/>
+      <Header extraNav={<button onClick={()=>{setSelected(null);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} style={{padding:"9px 20px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600,border:`2px solid ${C.greenBorder}`,background:C.white,color:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>← Retour</button>}/>
+      <AgrémentForm arrivage={selected} onBack={()=>{setSelected(null);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} onSubmit={async(id)=>{await attemptValidation(id);}}/>
+    </div>
+  );
+
+  return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      <Toast/><Header/>
+      <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
+
+        {/* Stats */}
+        <div style={{display:"flex",gap:12,marginBottom:16}}>
+          <StatCard label="À traiter" value={enAttente.length} color="#e6a817"/>
+          <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
+          <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
+        </div>
+
+        {/* Navigation tabs */}
+        <NavTabs/>
+
+        {/* Page saisie */}
+        {page==="saisie" && <SaisieForm/>}
+
+        {/* Page import Excel */}
+        {page==="import" && (
+          <div style={{...card}}>
+            <div style={{...cardTop}}><p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>📊 Import Excel (feuille Geslot)</p></div>
+            <div style={{...cardBody}}>
+              <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} style={{fontSize:14,marginBottom:16}}/>
+              {importing&&<p style={{color:C.textMuted}}>⏳ Traitement...</p>}
+              {preview&&<>
+                <p style={{fontWeight:600,color:C.greenDark,marginBottom:12}}>✓ {preview.length} arrivages détectés</p>
+                {preview.slice(0,5).map((a,i)=><div key={i} style={{background:C.greenLight,borderRadius:8,padding:"8px 12px",marginBottom:6,fontSize:13}}><strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}</div>)}
+                {preview.length>5&&<p style={{fontSize:12,color:C.textMuted}}>...et {preview.length-5} autres</p>}
+                <button onClick={confirmImport} style={{width:"100%",padding:"13px",background:C.green,color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:"'Segoe UI',system-ui,sans-serif",marginTop:12}}>
+                  ✓ Confirmer l'import
+                </button>
+              </>}
+            </div>
           </div>
+        )}
 
-          {/* Bouton nouvel arrivage */}
-          <button onClick={()=>setPage("saisie")} style={{width:"100%",marginBottom:12,padding:"13px",background:C.green,color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            ➕ Nouvel arrivage
-          </button>
-          <button onClick={()=>setPage("import")} style={{width:"100%",marginBottom:16,padding:"13px",background:C.white,color:C.green,border:`2px solid ${C.greenBorder}`,borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            📊 Import Excel
-          </button>
-          {/* Bouton hors liste */}
+        {/* Page suivi */}
+        {page==="suivi" && <>
           <button onClick={()=>setHorsListeMode(true)} style={{width:"100%",marginBottom:16,padding:"13px",background:"#fff3e0",color:"#e65100",border:"1.5px solid #ffcc80",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             ⚠️ Signaler un litige hors liste
           </button>
-
           <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
           {filteredEA.length===0&&enAttente.length===0?(
             <div style={{textAlign:"center",padding:"2.5rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}>
@@ -1326,7 +1045,7 @@ export default function App() {
             </div>
           ):<>
             {filteredEA.length>0&&<>
-              <p style={{fontWeight:700,fontSize:14,color:C.greenDark,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>⏳ En attente</p>
+              <p style={{fontWeight:700,fontSize:14,color:C.greenDark,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>⏳ En attente d'agrément</p>
               {filteredEA.map(a=>(
                 <div key={a.id} onClick={()=>{setSelected(a);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} style={{...card,cursor:"pointer",borderLeft:"4px solid #e6a817"}}>
                   <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1337,7 +1056,7 @@ export default function App() {
                     <span style={{fontSize:20,color:C.textMuted}}>›</span>
                   </div>
                   <div style={{...cardBody,paddingTop:10,paddingBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <p style={{margin:0,fontSize:12,color:C.textMuted}}>Saisi par <strong>{a.acheteur}</strong> · {a.date}</p>
+                    <p style={{margin:0,fontSize:12,color:C.textMuted}}>{a.date}</p>
                     <Badge status="en attente"/>
                   </div>
                 </div>
@@ -1346,20 +1065,19 @@ export default function App() {
           </>}
           {filteredTraites.length>0&&<>
             <p style={{fontWeight:700,fontSize:14,color:C.textMuted,margin:"24px 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>✅ Traités récemment</p>
-            {filteredTraites.slice(0,8).map(a=>(
+            {filteredTraites.slice(0,10).map(a=>(
               <div key={a.id} style={{background:C.white,borderRadius:12,padding:"10px 16px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
                 <div>
                   <p style={{margin:"0 0 2px",fontSize:14,fontWeight:600,color:C.text}}>{a.produit} · {a.fournisseur}{a.hors_liste&&<span style={{marginLeft:8,fontSize:11,background:"#fff3e0",color:"#e65100",padding:"2px 8px",borderRadius:10,fontWeight:600}}>Hors liste</span>}</p>
-                  <p style={{margin:0,fontSize:12,color:C.textMuted}}>{a.agréeur&&`par ${a.agréeur}`}{a.notes?.heure_agreage&&` · ${a.notes.heure_agreage}`}</p>
+                  <p style={{margin:0,fontSize:12,color:C.textMuted}}>{a.date}</p>
                 </div>
                 <Badge status={a.statut}/>
               </div>
             ))}
           </>}
-        </div>
-      </div>
-    );
-  }
+        </>}
 
-  return null;
+      </div>
+    </div>
+  );
 }
