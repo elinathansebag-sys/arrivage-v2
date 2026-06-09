@@ -198,7 +198,7 @@ export default function App() {
   const [managerMode, setManagerMode] = useState("dashboard");
   const [page, setPage]             = useState("saisie");
   const [arrivages, setArrivages]   = useState([]);
-  const [dbLoading, setDbLoading]   = useState(true);
+  const [dbLoading, setDbLoading]   = useState(false);
   const [form, setForm]             = useState(INIT_FORM);
   const [selected, setSelected]     = useState(null);
   const [notes, setNotes]           = useState(INIT_CONTROLE);
