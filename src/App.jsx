@@ -3,13 +3,13 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, update, remove } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCT-IBSscTk35HfEhg45VSoxRtXIcHJYHQ",
-  authDomain: "rungis-arrivages.firebaseapp.com",
-  databaseURL: "https://rungis-arrivages-default-rtdb.firebaseio.com",
-  projectId: "rungis-arrivages",
-  storageBucket: "rungis-arrivages.firebasestorage.app",
-  messagingSenderId: "1073480017734",
-  appId: "1:1073480017734:web:24ca3ef5854ed197152747"
+  apiKey: "AIzaSyAHvbKNECpqcvaFnrcLN6Yfo3ZbVI5AZo4",
+  authDomain: "arribagev21.firebaseapp.com",
+  databaseURL: "https://arribagev21-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "arribagev21",
+  storageBucket: "arribagev21.firebasestorage.app",
+  messagingSenderId: "440452496146",
+  appId: "1:440452496146:web:585b700f23dbf18a88d1cb",
 };
 
 const app = initializeApp(firebaseConfig);
