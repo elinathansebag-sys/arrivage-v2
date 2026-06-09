@@ -372,17 +372,19 @@ export default function App() {
     const id = targetId || selected?.id;
     if (!decision) { showToast("Choisissez une décision","err"); return; }
     if (!notes.qualite) { showToast("Notez la qualité visuelle","err"); return; }
-    // Check lot fournisseur required for litige
-    if ((decision==="sous réserve"||decision==="refusé") && !notes.lot_fournisseur_litige) {
+    
+    // Résoudre la décision finale
+    const decisionFinale = decision === "validé" ? "validé" : notes.decision_type || decision;
+    
+    if ((decisionFinale==="sous réserve"||decisionFinale==="refusé") && !notes.lot_fournisseur_litige) {
       showToast("Saisissez le N° lot fournisseur","err"); return;
     }
-    // Photo missing → popup instead of blocking
-    if ((decision==="sous réserve"&&!notes.reserve_photos)||(decision==="refusé"&&!notes.refus_photos)) {
-      setPendingDecision({id, decision});
-      setPhotoModal(decision==="sous réserve"?"reserve":"refus");
+    if ((decisionFinale==="sous réserve"&&!notes.reserve_photos)||(decisionFinale==="refusé"&&!notes.refus_photos)) {
+      setPendingDecision({id, decision: decisionFinale});
+      setPhotoModal(decisionFinale==="sous réserve"?"reserve":"refus");
       return;
     }
-    doSubmitValidation(id);
+    doSubmitValidation(id, decisionFinale);
   };
 
   const EMAILJS_SERVICE  = "service_sn0c5to";
@@ -484,7 +486,8 @@ export default function App() {
     }
   };
 
-  const doSubmitValidation = async (id) => {
+  const doSubmitValidation = async (id, decisionFinale) => {
+    const finalDecision = decisionFinale || (decision === "validé" ? "validé" : notes.decision_type || decision);
     const heureAgreage = notes.heure_agreage || new Date().toTimeString().slice(0,5);
     const arrivage = arrivages.find(a=>a.id===id) || selected || selectedLot;
     await update(ref(db,`arrivages/${id}`),{
@@ -643,13 +646,10 @@ export default function App() {
     </>
   );
 
-  // ── AGRÉMENT FORM ─────────────────────────────────────────────────────────────
+  // ── AGRÉMENT FORM SIMPLIFIÉ ──────────────────────────────────────────────────
 
   const AgrémentForm = ({ arrivage, onBack, onSubmit }) => {
     const tempAlert = notes.temperature && parseFloat(notes.temperature) > 15;
-    const poidsRef  = arrivage.poids_colis ? parseFloat(arrivage.poids_colis) : null;
-    const poidsMesure = notes.poids_colis_mesure ? parseFloat(notes.poids_colis_mesure) : null;
-    const poidsBad  = poidsRef && poidsMesure && Math.abs(poidsMesure - poidsRef) / poidsRef > 0.05;
 
     return (
       <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
@@ -658,19 +658,15 @@ export default function App() {
         {/* Recap lot */}
         <div style={card}>
           <div style={cardTop}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div>
                 <p style={{margin:"0 0 6px",fontWeight:700,fontSize:20,color:C.greenDark}}>{arrivage.produit}{arrivage.variete&&` · ${arrivage.variete}`}</p>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <Pill>🏭 {arrivage.fournisseur}</Pill>
-                  {arrivage.lot_interne&&<Pill>🔖 Interne : {arrivage.lot_interne}</Pill>}
-                  {arrivage.lot_fournisseur&&<Pill>🔢 Fourn. : {arrivage.lot_fournisseur}</Pill>}
+                  {arrivage.lot_interne&&<Pill>🔖 {arrivage.lot_interne}</Pill>}
                   <Pill>📦 {arrivage.quantite} {arrivage.unite}</Pill>
-                  {arrivage.poids_net&&<Pill>⚖ {arrivage.poids_net} kg net</Pill>}
-                  {arrivage.poids_colis&&<Pill>📦 {arrivage.poids_colis} kg/colis</Pill>}
                   {arrivage.origine&&<Pill>🌍 {arrivage.origine}</Pill>}
                   {arrivage.date&&<Pill>📅 {arrivage.date}</Pill>}
-                  
                 </div>
               </div>
               <Badge status={arrivage.statut}/>
@@ -679,137 +675,116 @@ export default function App() {
           </div>
         </div>
 
-        <Section title="Évaluation qualité" icon="🔍">
-          {/* Qualité visuelle */}
-          <div style={{background:notes.qualite>0?NOTE_BG[notes.qualite]:C.pillBg,border:`1px solid ${notes.qualite>0?NOTE_COLORS[notes.qualite]+"44":C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <p style={{margin:0,fontWeight:700,fontSize:14,color:C.text}}>👁 Qualité visuelle</p>
-              {notes.qualite>0&&<span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:12,background:NOTE_BG[notes.qualite],color:NOTE_COLORS[notes.qualite],border:`1px solid ${NOTE_COLORS[notes.qualite]}44`}}>{NOTE_LABELS[notes.qualite]}</span>}
-            </div>
-            <div style={{display:"flex",gap:6}}>{[1,2,3,4,5].map(n=><NoteBtn key={n} n={n} selected={notes.qualite} onChange={v=>setNotes({...notes,qualite:v})}/>)}</div>
-          </div>
-
-          {/* Heure agrément */}
-          <div style={{background:C.pillBg,border:`1px solid ${C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-            <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:C.text}}>🕐 Heure d'agrément</p>
-            <input type="time" value={notes.heure_agreage} onChange={e=>setNotes({...notes,heure_agreage:e.target.value})} style={{...inputStyle,width:140}}/>
-          </div>
-
-          {/* Température */}
-          <div style={{background:tempAlert?C.orange:C.pillBg,border:`1px solid ${tempAlert?C.orangeBorder:C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-            <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:tempAlert?C.orangeText:C.text}}>🌡 Température mesurée {tempAlert&&"⚠️"}</p>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <input type="number" value={notes.temperature} onChange={e=>setNotes({...notes,temperature:e.target.value})} placeholder="Ex : 4" style={{...inputStyle,width:120,borderColor:tempAlert?C.orangeBorder:C.greenBorder}}/>
-              <span style={{fontSize:14,color:C.textMuted}}>°C</span>
-              {arrivage.temp_annoncee&&<span style={{fontSize:12,color:C.blueText,background:C.blue,border:`1px solid ${C.blueBorder}`,padding:"3px 10px",borderRadius:20}}>Annoncée : {arrivage.temp_annoncee}°C</span>}
-            </div>
-            {tempAlert&&<p style={{margin:"8px 0 0",fontSize:13,color:C.orangeText,fontWeight:600}}>⚠️ Température supérieure à 15°C — produits frais hors norme !</p>}
-          </div>
-
-          {/* Poids */}
-          <div style={{background:poidsBad?C.red:C.pillBg,border:`1px solid ${poidsBad?C.redBorder:C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-            <p style={{margin:"0 0 6px",fontWeight:700,fontSize:14,color:poidsBad?C.redText:C.text}}>⚖ Poids par barquette / colis</p>
-            {arrivage.poids_colis&&<p style={{margin:"0 0 8px",fontSize:12,color:C.textMuted}}>Annoncé : <strong>{arrivage.poids_colis} kg</strong></p>}
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <input type="number" step="0.001" value={notes.poids_colis_mesure} onChange={e=>setNotes({...notes,poids_colis_mesure:e.target.value})} placeholder="Poids mesuré" style={{...inputStyle,width:150,borderColor:poidsBad?C.redBorder:C.greenBorder}}/>
-              <span style={{fontSize:14,color:C.textMuted}}>kg</span>
-            </div>
-            {poidsBad&&(
-              <div style={{marginTop:10}}>
-                <p style={{margin:"0 0 8px",fontSize:13,color:C.redText,fontWeight:600}}>⚠️ Écart de poids significatif — voulez-vous refuser ?</p>
-                <button onClick={()=>setDecision("refusé")} style={{padding:"8px 16px",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,background:C.redText,color:"#fff",border:"none",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>→ Passer en refus</button>
-              </div>
-            )}
-          </div>
-
-          {/* Quantité */}
-          <div style={{background:C.pillBg,border:`1px solid ${C.greenBorder}`,borderRadius:12,padding:"14px",marginBottom:12}}>
-            <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:C.text}}>📦 Quantité</p>
-            <p style={{margin:"0 0 10px",fontSize:12,color:C.textMuted}}>Annoncée : <strong>{arrivage.quantite} {arrivage.unite}</strong></p>
-            <div style={{display:"flex",gap:10}}>
-              {[{val:true,label:"✓ Correcte",bg:C.greenLight,color:C.greenDark,border:C.green},{val:false,label:"✗ Incorrecte",bg:C.red,color:C.redText,border:C.redText}].map(opt=>(
-                <button key={String(opt.val)} onClick={()=>setNotes({...notes,quantite_ok:opt.val,quantite_corrigee:""})} style={{flex:1,padding:"10px",borderRadius:10,cursor:"pointer",fontWeight:600,fontSize:13,background:notes.quantite_ok===opt.val?opt.bg:C.white,color:notes.quantite_ok===opt.val?opt.color:C.textMuted,border:`1.5px solid ${notes.quantite_ok===opt.val?opt.border:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>{opt.label}</button>
+        {/* Note qualité */}
+        <div style={{...card,padding:0}}>
+          <div style={{...cardTop}}>
+            <p style={{margin:"0 0 12px",fontWeight:700,fontSize:15,color:C.text}}>👁 Note qualité visuelle</p>
+            <div style={{display:"flex",gap:8}}>
+              {[1,2,3,4,5].map(n=>(
+                <button key={n} onClick={()=>setNotes({...notes,qualite:n})} style={{
+                  flex:1, padding:"14px 0", borderRadius:12, cursor:"pointer",
+                  fontWeight:700, fontSize:18,
+                  background: notes.qualite===n ? NOTE_COLORS[n] : C.white,
+                  color: notes.qualite===n ? "#fff" : NOTE_COLORS[n],
+                  border: `2px solid ${NOTE_COLORS[n]}`,
+                  fontFamily:"'Segoe UI',system-ui,sans-serif",
+                  transition:"all 0.15s"
+                }}>{n}</button>
               ))}
             </div>
-            {notes.quantite_ok===false&&(
-              <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10}}>
-                <span style={{fontSize:13,color:C.textMuted}}>Quantité réelle :</span>
-                <input type="number" value={notes.quantite_corrigee} onChange={e=>setNotes({...notes,quantite_corrigee:e.target.value})} placeholder="Ex : 48" style={{...inputStyle,width:120}}/>
-                <span style={{fontSize:13,color:C.textMuted}}>{arrivage.unite}</span>
-              </div>
-            )}
+            {notes.qualite>0&&<p style={{margin:"10px 0 0",fontSize:13,fontWeight:600,color:NOTE_COLORS[notes.qualite],textAlign:"center"}}>{NOTE_LABELS[notes.qualite]}</p>}
           </div>
+        </div>
 
-          {/* Documents */}
-          <div style={{background:C.pillBg,border:`1px solid ${C.greenBorder}`,borderRadius:12,padding:"14px"}}>
-            <p style={{margin:"0 0 12px",fontWeight:700,fontSize:14,color:C.text}}>📋 Conformité documents</p>
-            {[{key:"ggn",label:"N° GGN présent"},{key:"num_lot",label:"N° Lot présent"},{key:"origine_ok",label:"Bonne origine"}].map(item=>(
-              <label key={item.key} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}}>
-                <input type="checkbox" checked={notes[item.key]} onChange={e=>setNotes({...notes,[item.key]:e.target.checked})} style={{width:18,height:18,accentColor:C.green,cursor:"pointer"}}/>
-                <span style={{fontSize:14,color:C.text,fontWeight:notes[item.key]?600:400}}>{item.label}</span>
-                {notes[item.key]&&<span style={{fontSize:11,background:C.greenLight,color:C.greenDark,border:`1px solid ${C.greenBorder}`,padding:"1px 8px",borderRadius:20}}>✓</span>}
-              </label>
-            ))}
+        {/* Température */}
+        <div style={{...card,padding:0}}>
+          <div style={{...cardTop,background:tempAlert?"#fff3e0":undefined,border:tempAlert?`1px solid ${C.orangeBorder}`:undefined}}>
+            <p style={{margin:"0 0 10px",fontWeight:700,fontSize:15,color:tempAlert?C.orangeText:C.text}}>🌡 Température mesurée {tempAlert&&"⚠️"}</p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <input type="number" value={notes.temperature} onChange={e=>setNotes({...notes,temperature:e.target.value})}
+                placeholder="Ex : 4" style={{...inputStyle,width:120,borderColor:tempAlert?C.orangeBorder:C.greenBorder}}/>
+              <span style={{fontSize:16,color:C.textMuted}}>°C</span>
+              {arrivage.temp_annoncee&&<span style={{fontSize:12,color:C.blueText,background:C.blue,border:`1px solid ${C.blueBorder}`,padding:"3px 10px",borderRadius:20}}>Annoncée : {arrivage.temp_annoncee}°C</span>}
+            </div>
+            {tempAlert&&<p style={{margin:"8px 0 0",fontSize:13,color:C.orangeText,fontWeight:600}}>⚠️ Température > 15°C — produits hors norme !</p>}
           </div>
-        </Section>
-
-        <Section title="Observations" icon="📝" defaultOpen={false}>
-          <textarea value={obsAgr} onChange={e=>setObsAgr(e.target.value)} placeholder="Remarques agréeur..." rows={3} style={{...inputStyle,resize:"vertical"}}/>
-        </Section>
+        </div>
 
         {/* Décision */}
         <div style={card}>
-          <div style={cardTop}><p style={{margin:0,fontWeight:700,fontSize:14,color:C.greenDark}}>⚖️ Décision finale</p></div>
           <div style={cardBody}>
-            <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-              {[
-                {id:"validé",icon:"✅",label:"Valider"},
-                {id:"sous réserve",icon:"⚠️",label:"Sous réserve"},
-                {id:"refusé",icon:"❌",label:"Refus litige"},
-              ].map(d=>{
-                const active=decision===d.id;
-                const bg=active?(d.id==="validé"?C.greenLight:d.id==="sous réserve"?"#fff8e6":C.red):C.white;
-                const border=active?(d.id==="validé"?C.green:d.id==="sous réserve"?"#e6a817":C.redText):(d.id==="refusé"?C.redBorder:C.greenBorder);
-                const color=active?(d.id==="validé"?C.greenDark:d.id==="sous réserve"?"#7d5a00":C.redText):C.textMuted;
-                return <button key={d.id} onClick={()=>setDecision(d.id)} style={{flex:1,minWidth:100,padding:"12px 8px",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,background:bg,color,border:`2px solid ${border}`,fontFamily:"'Segoe UI',system-ui,sans-serif",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span style={{fontSize:16}}>{d.icon}</span>{d.label}</button>;
-              })}
+            <p style={{margin:"0 0 14px",fontWeight:700,fontSize:15,color:C.text}}>📋 Décision</p>
+            <div style={{display:"flex",gap:12,marginBottom:16}}>
+              <button onClick={()=>setDecision("validé")} style={{
+                flex:1, padding:"18px", borderRadius:14, cursor:"pointer",
+                fontWeight:700, fontSize:16,
+                background: decision==="validé" ? C.green : C.greenLight,
+                color: decision==="validé" ? "#fff" : C.greenDark,
+                border: `2px solid ${decision==="validé" ? C.green : C.greenBorder}`,
+                fontFamily:"'Segoe UI',system-ui,sans-serif",
+                boxShadow: decision==="validé" ? "0 4px 12px rgba(39,174,96,0.3)" : "none"
+              }}>✅ Conforme</button>
+              <button onClick={()=>setDecision("non_conforme")} style={{
+                flex:1, padding:"18px", borderRadius:14, cursor:"pointer",
+                fontWeight:700, fontSize:16,
+                background: decision==="non_conforme" ? C.redText : C.red,
+                color: decision==="non_conforme" ? "#fff" : C.redText,
+                border: `2px solid ${decision==="non_conforme" ? C.redText : C.redBorder}`,
+                fontFamily:"'Segoe UI',system-ui,sans-serif",
+                boxShadow: decision==="non_conforme" ? "0 4px 12px rgba(192,57,43,0.3)" : "none"
+              }}>❌ Non conforme</button>
             </div>
 
-            {/* Litige details */}
-            {(decision==="sous réserve"||decision==="refusé")&&(
-              <div style={{background:decision==="sous réserve"?"#fff8e6":C.red,border:`1px solid ${decision==="sous réserve"?"#ffe08a":C.redBorder}`,borderRadius:12,padding:"14px",marginBottom:16}}>
-                <p style={{margin:"0 0 12px",fontWeight:700,fontSize:13,color:decision==="sous réserve"?"#7d5a00":C.redText}}>
-                  {decision==="sous réserve"?"⚠️ Détails — Sous réserve":"❌ Détails — Refus litige"}
-                </p>
-
-                {/* N° Lot fournisseur obligatoire */}
-                <Field label="N° Lot fournisseur (obligatoire)" required>
-                  <input value={notes.lot_fournisseur_litige||""} onChange={e=>setNotes({...notes,lot_fournisseur_litige:e.target.value})} placeholder="Ex : FR-2024-001234" style={{...inputStyle,borderColor:decision==="sous réserve"?"#ffe08a":C.redBorder}}/>
-                </Field>
-
-                <textarea value={decision==="sous réserve"?(notes.reserve_raison||""):(notes.refus_raison||"")}
-                  onChange={e=>setNotes(decision==="sous réserve"?{...notes,reserve_raison:e.target.value}:{...notes,refus_raison:e.target.value})}
-                  placeholder="Raison..." rows={2} style={{...inputStyle,resize:"vertical",borderColor:decision==="sous réserve"?"#ffe08a":C.redBorder,marginBottom:10}}/>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <input type="number" min="0" max="100"
-                    value={decision==="sous réserve"?(notes.reserve_pct||""):(notes.refus_pct||"")}
-                    onChange={e=>setNotes(decision==="sous réserve"?{...notes,reserve_pct:e.target.value}:{...notes,refus_pct:e.target.value})}
-                    placeholder="%" style={{...inputStyle,width:80,borderColor:decision==="sous réserve"?"#ffe08a":C.redBorder}}/>
-                  <span style={{fontSize:14,color:C.textMuted}}>{decision==="sous réserve"?"% concerné":"% refusé"}</span>
+            {/* Si non conforme → redirection vers moorea-qualite */}
+            {decision==="non_conforme"&&(
+              <div style={{background:C.red,border:`1px solid ${C.redBorder}`,borderRadius:14,padding:"16px",marginBottom:16}}>
+                <p style={{margin:"0 0 10px",fontWeight:700,fontSize:14,color:C.redText}}>❌ Non conforme — Créer un rapport qualité</p>
+                <div style={{background:"rgba(255,255,255,0.6)",borderRadius:10,padding:"12px",marginBottom:14,fontSize:13,color:C.text}}>
+                  <p style={{margin:"0 0 4px",fontWeight:600}}>📦 {arrivage.produit}</p>
+                  <p style={{margin:"0 0 4px",color:C.textMuted}}>🏭 {arrivage.fournisseur} · 🔖 Lot {arrivage.lot_interne} · 📦 {arrivage.quantite} {arrivage.unite}</p>
+                  {arrivage.origine&&<p style={{margin:0,color:C.textMuted}}>🌍 {arrivage.origine}</p>}
                 </div>
-                <label style={{fontSize:12,fontWeight:600,color:C.textMuted,display:"block",marginBottom:5,textTransform:"uppercase"}}>📷 Photos (recommandées)</label>
-                <input type="file" accept="image/*" multiple
-                  onChange={e=>setNotes(decision==="sous réserve"?{...notes,reserve_photos:Array.from(e.target.files).map(f=>f.name).join(', ')}:{...notes,refus_photos:Array.from(e.target.files).map(f=>f.name).join(', ')})}
-                  style={{fontSize:13,color:C.text}}/>
-                {(decision==="sous réserve"?notes.reserve_photos:notes.refus_photos)
-                  ?<p style={{margin:"6px 0 0",fontSize:12,color:C.greenDark}}>✓ {decision==="sous réserve"?notes.reserve_photos:notes.refus_photos}</p>
-                  :<p style={{margin:"6px 0 0",fontSize:11,color:"#999",fontStyle:"italic"}}>Aucune photo — vous pourrez continuer sans (confirmation requise)</p>
-                }
+                <button onClick={()=>{
+                  const params = new URLSearchParams({
+                    produit: arrivage.produit || '',
+                    fournisseur: arrivage.fournisseur || '',
+                    lot: arrivage.lot_interne || '',
+                    quantite: arrivage.quantite || '',
+                    unite: arrivage.unite || '',
+                    origine: arrivage.origine || '',
+                    temperature: notes.temperature || '',
+                    qualite: notes.qualite || '',
+                  });
+                  window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`, '_blank');
+                }} style={{
+                  width:"100%", padding:"14px", background:C.redText, color:"#fff",
+                  border:"none", borderRadius:12, fontWeight:700, cursor:"pointer",
+                  fontSize:15, fontFamily:"'Segoe UI',system-ui,sans-serif",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8
+                }}>
+                  📋 Ouvrir le formulaire de rapport qualité →
+                </button>
               </div>
             )}
 
-            <button onClick={()=>onSubmit(arrivage.id)} style={{width:"100%",padding:"14px",background:decision==="refusé"?C.redText:decision==="sous réserve"?"#e6a817":C.green,color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif",opacity:decision?1:0.5}}>
-              Confirmer la décision →
+            {/* Observations */}
+            <Field label="Observations (optionnel)">
+              <textarea value={obsAgr} onChange={e=>setObsAgr(e.target.value)}
+                placeholder="Remarques complémentaires..." rows={2}
+                style={{...inputStyle,resize:"vertical",marginBottom:0}}/>
+            </Field>
+
+            <button onClick={()=>onSubmit(arrivage.id)} disabled={!decision || (decision==="non_conforme" && !notes.decision_type)}
+              style={{width:"100%",padding:"16px",
+                background: !decision || (decision==="non_conforme"&&!notes.decision_type) ? "#ccc" :
+                  decision==="validé" ? C.green :
+                  notes.decision_type==="refusé" ? C.redText : "#e6a817",
+                color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:!decision||(decision==="non_conforme"&&!notes.decision_type)?"not-allowed":"pointer",
+                fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif",marginTop:4}}>
+              {decision==="validé" ? "✅ Confirmer — Conforme" :
+               decision==="non_conforme" && notes.decision_type==="sous réserve" ? "⚠️ Confirmer — Sous réserve" :
+               decision==="non_conforme" && notes.decision_type==="refusé" ? "❌ Confirmer — Refus" :
+               "Choisir une décision"}
             </button>
           </div>
         </div>
@@ -817,7 +792,7 @@ export default function App() {
     );
   };
 
-  // ── FICHE LOT ─────────────────────────────────────────────────────────────────
+    // ── FICHE LOT ─────────────────────────────────────────────────────────────────
 
   const FicheLot = ({ a, onBack, isManager }) => (
     <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 40px"}}>
