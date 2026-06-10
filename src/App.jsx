@@ -362,9 +362,9 @@ export default function App() {
     setImporting(true);
     const now=new Date();
     for(const a of preview){
-      await push(ref(db,"arrivages"),{...a,statut:"en attente",acheteur:displayName,acheteurId:authUser.uid,date:now.toLocaleDateString("fr-FR"),timestamp:Date.now(),notes:{},obsAgr:""});
+      await push(ref(db,"arrivages"),{...a,statut:"en attente",acheteur:"Moorea",acheteurId:"default",date:a.date||now.toLocaleDateString("fr-FR"),timestamp:Date.now(),notes:{},obsAgr:""});
     }
-    setPreview(null);setImporting(false);
+    setPreview(null); setImporting(false); setPage("dashboard");
     showToast(`${preview.length} arrivages importés ✓`);
   };
 
@@ -1087,7 +1087,7 @@ export default function App() {
         )}
 
         {/* Dashboard principal — par date / fournisseur */}
-        {page==="dashboard" && <>
+        {true && <>
           {sortedDates.length === 0 ? (
             <div style={{textAlign:"center",padding:"3rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}>
               <div style={{fontSize:48,marginBottom:12}}>📦</div>
