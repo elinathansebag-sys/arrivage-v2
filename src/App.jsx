@@ -242,6 +242,7 @@ export default function App() {
   const [selectedFourn, setSelectedFourn] = useState(null);
   const [search, setSearch] = useState("");
   const [openDates, setOpenDates] = useState({}); // {date: bool}
+  const [scanning, setScanning] = useState(false);
   const [articleEdits, setArticleEdits] = useState({}); // {id: {colisRecu, qualite, temperature, litiges}}
   const [preview, setPreview]       = useState(null);
   const [selectedLot, setSelectedLot] = useState(null);
@@ -1095,6 +1096,73 @@ export default function App() {
     </div>
   );
 
+
+  // ── SCAN ÉTIQUETTE → cherche arrivage ────────────────────────────────────────
+  const scanEtiquette = async (file) => {
+    setScanning(true);
+    showToast("⏳ Analyse de l'étiquette…");
+    try {
+      const base64 = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 800;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+        };
+        img.src = URL.createObjectURL(file);
+      });
+
+      const response = await fetch("/api/scan-etiquette", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base64, mediaType: file.type }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const text = data.content?.[0]?.text || "";
+      if (!text) throw new Error("Réponse vide");
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+
+      // Cherche dans les arrivages
+      const produitScan = (parsed.produit || "").toLowerCase();
+      const fournScan = (parsed.fournisseur || "").toLowerCase();
+      const lotScan = (parsed.lotFournisseur || parsed.lot || "").toLowerCase();
+
+      const matches = arrivages.filter(a => {
+        if (produitScan && a.produit?.toLowerCase().includes(produitScan)) return true;
+        if (fournScan && a.fournisseur?.toLowerCase().includes(fournScan)) return true;
+        if (lotScan && (a.lot_interne?.toLowerCase().includes(lotScan) || a.lot_fournisseur?.toLowerCase().includes(lotScan))) return true;
+        return false;
+      });
+
+      if (matches.length === 0) {
+        setSearch(parsed.produit || parsed.fournisseur || "");
+        showToast(`🔍 "${parsed.produit || parsed.fournisseur}" — aucun arrivage trouvé`);
+      } else {
+        // Rempli la recherche avec le produit trouvé
+        setSearch(parsed.produit || "");
+        // Ouvre la date du premier match
+        const firstMatch = matches[0];
+        if (firstMatch.date) {
+          setOpenDates(prev => ({...prev, [firstMatch.date]: true}));
+        }
+        showToast(`✅ ${matches.length} arrivage${matches.length>1?"s":""} trouvé${matches.length>1?"s":""}  — "${parsed.produit || parsed.fournisseur}"`);
+      }
+    } catch (err) {
+      showToast(`Erreur : ${err.message || "Analyse échouée"}`, "err");
+    } finally {
+      setScanning(false);
+    }
+  };
+
   // ── DASHBOARD PAR DATE / FOURNISSEUR ─────────────────────────────────────────
   const allArrivages = [...enAttente, ...traites];
   
@@ -1203,15 +1271,29 @@ export default function App() {
           </div>
         )}
 
-        {/* Barre de recherche */}
-        <div style={{marginBottom:16,position:"relative"}}>
-          <input
-            value={search}
-            onChange={e=>setSearch(e.target.value)}
-            placeholder="🔍 Rechercher un produit, fournisseur, lot..."
-            style={{width:"100%",padding:"12px 16px 12px 16px",borderRadius:12,border:`1.5px solid ${C.greenBorder}`,fontSize:14,color:C.text,background:C.white,outline:"none",boxSizing:"border-box"}}
-          />
-          {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:C.textMuted}}>✕</button>}
+        {/* Barre de recherche + scanner */}
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          <div style={{flex:1,position:"relative"}}>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none"}}>🔍</span>
+            <input
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              placeholder="Rechercher un produit, fournisseur, lot..."
+              style={{width:"100%",padding:"12px 16px 12px 38px",borderRadius:12,border:`1.5px solid ${C.greenBorder}`,fontSize:14,color:C.text,background:C.white,outline:"none",boxSizing:"border-box"}}
+            />
+            {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:C.textMuted}}>✕</button>}
+          </div>
+          <label style={{
+            display:"flex",alignItems:"center",gap:6,padding:"0 16px",
+            background:scanning?"#d1d5db":"linear-gradient(135deg,#3b82f6,#1d4ed8)",
+            color:"#fff",borderRadius:12,cursor:scanning?"not-allowed":"pointer",
+            fontWeight:700,fontSize:13,whiteSpace:"nowrap",
+            boxShadow:scanning?"none":"0 2px 8px rgba(59,130,246,0.4)",
+            pointerEvents:scanning?"none":"auto"
+          }}>
+            {scanning ? "⏳" : "📷 Scanner"}
+            <input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];if(f)scanEtiquette(f);e.target.value="";}} style={{display:"none"}}/>
+          </label>
         </div>
 
         {/* Dashboard principal — par date / fournisseur */}
