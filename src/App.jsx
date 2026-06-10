@@ -1200,46 +1200,98 @@ export default function App() {
                 <div style={{height:1,flex:1,background:C.greenBorder}}/>
               </div>
 
-              {/* Bulles fournisseurs */}
-              <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+              {/* Liste fournisseurs accordion */}
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {Object.entries(byDate[date]).map(([fourn, articles]) => {
                   const nbAttente = articles.filter(a=>a.statut==="en attente").length;
                   const nbValide = articles.filter(a=>a.statut==="validé").length;
                   const nbRefuse = articles.filter(a=>a.statut==="refusé"||a.statut==="sous réserve").length;
                   const allDone = nbAttente === 0;
+                  const isOpen = selectedFourn?.fourn === fourn && selectedFourn?.date === date;
                   
                   return (
-                    <div key={fourn} onClick={()=>{
-                      setSelectedFourn({date, fourn, articles});
-                    }} style={{
-                      background: allDone ? C.greenLight : C.white,
-                      border: `2px solid ${allDone ? C.green : nbRefuse > 0 ? C.redBorder : "#e6a817"}`,
-                      borderRadius:16, padding:"14px 18px", cursor:"pointer",
-                      minWidth:160, maxWidth:220,
-                      boxShadow: allDone ? "none" : "0 4px 16px rgba(0,0,0,0.08)",
-                      transition:"transform 0.15s, box-shadow 0.15s",
-                      position:"relative"
-                    }}
-                    onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.12)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=allDone?"none":"0 4px 16px rgba(0,0,0,0.08)";}}>
+                    <div key={fourn} style={{background:C.white,borderRadius:14,border:`2px solid ${allDone?C.greenBorder:nbRefuse>0?C.redBorder:"#e6a817"}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
                       
-                      {/* Badge statut */}
-                      {allDone ? (
-                        <span style={{position:"absolute",top:8,right:8,fontSize:16}}>✅</span>
-                      ) : nbRefuse > 0 ? (
-                        <span style={{position:"absolute",top:8,right:8,fontSize:16}}>⚠️</span>
-                      ) : (
-                        <span style={{position:"absolute",top:8,right:8,background:"#e6a817",color:"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10}}>{nbAttente}</span>
-                      )}
-
-                      <p style={{margin:"0 0 4px",fontWeight:700,fontSize:14,color:allDone?C.greenDark:C.text,paddingRight:30}}>{fourn}</p>
-                      <p style={{margin:"0 0 8px",fontSize:12,color:C.textMuted}}>{articles.length} article{articles.length>1?"s":""}</p>
-                      
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {nbAttente>0&&<span style={{fontSize:11,background:"#fff8e6",color:"#7d5a00",padding:"2px 8px",borderRadius:8,fontWeight:600}}>⏳ {nbAttente} en attente</span>}
-                        {nbValide>0&&<span style={{fontSize:11,background:C.greenLight,color:C.greenDark,padding:"2px 8px",borderRadius:8,fontWeight:600}}>✅ {nbValide} validé{nbValide>1?"s":""}</span>}
-                        {nbRefuse>0&&<span style={{fontSize:11,background:C.red,color:C.redText,padding:"2px 8px",borderRadius:8,fontWeight:600}}>⚠️ {nbRefuse} litige{nbRefuse>1?"s":""}</span>}
+                      {/* Header row */}
+                      <div onClick={()=>setSelectedFourn(isOpen ? null : {date, fourn, articles})}
+                        style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",cursor:"pointer",background:allDone?C.greenLight:"#fff"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:12,flex:1}}>
+                          <span style={{fontSize:20}}>{allDone?"✅":nbRefuse>0?"⚠️":"⏳"}</span>
+                          <div>
+                            <p style={{margin:"0 0 2px",fontWeight:700,fontSize:15,color:C.text}}>{fourn}</p>
+                            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                              <span style={{fontSize:12,color:C.textMuted}}>{articles.length} article{articles.length>1?"s":""}</span>
+                              {nbAttente>0&&<span style={{fontSize:11,background:"#fff8e6",color:"#7d5a00",padding:"1px 8px",borderRadius:8,fontWeight:600}}>⏳ {nbAttente} en attente</span>}
+                              {nbValide>0&&<span style={{fontSize:11,background:C.greenLight,color:C.greenDark,padding:"1px 8px",borderRadius:8,fontWeight:600}}>✅ {nbValide}</span>}
+                              {nbRefuse>0&&<span style={{fontSize:11,background:C.red,color:C.redText,padding:"1px 8px",borderRadius:8,fontWeight:600}}>⚠️ {nbRefuse}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{fontSize:18,color:C.textMuted,transform:isOpen?"rotate(45deg)":"rotate(0deg)",transition:"transform 0.2s",fontWeight:300}}>+</span>
                       </div>
+
+                      {/* Articles list */}
+                      {isOpen && (
+                        <div style={{borderTop:`1px solid ${C.greenBorder}`}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                            <thead>
+                              <tr style={{background:"#f8faf9"}}>
+                                {["Lot","Produit","Colis","Action"].map(h=>(
+                                  <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",borderBottom:`1px solid ${C.greenBorder}`}}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {articles.map((a,i)=>(
+                                <tr key={a.id} style={{borderBottom:`1px solid ${C.greenBorder}22`,background:i%2===0?"#fafffe":"#fff"}}>
+                                  <td style={{padding:"10px 14px",fontSize:11,color:C.textMuted,fontWeight:600}}>{a.lot_interne||"—"}</td>
+                                  <td style={{padding:"10px 14px",fontWeight:600,color:C.text}}>{a.produit}</td>
+                                  <td style={{padding:"10px 14px",textAlign:"center",fontWeight:700}}>{a.quantite} <span style={{fontSize:11,color:C.textMuted}}>{a.unite}</span></td>
+                                  <td style={{padding:"10px 14px"}}>
+                                    {a.statut==="en attente" ? (
+                                      <div style={{display:"flex",gap:6}}>
+                                        <button onClick={async(e)=>{
+                                          e.stopPropagation();
+                                          await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
+                                          setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
+                                          showToast("✅ Validé");
+                                        }} style={{padding:"5px 10px",background:C.green,color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontWeight:700,fontSize:12}}>
+                                          ✅
+                                        </button>
+                                        <button onClick={(e)=>{
+                                          e.stopPropagation();
+                                          const params = new URLSearchParams({produit:a.produit||'',fournisseur:a.fournisseur||'',lot:a.lot_interne||'',quantite:a.quantite||'',unite:a.unite||'',origine:a.origine||''});
+                                          window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`,'_blank');
+                                          update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now()});
+                                          setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"sous réserve"}:x)}));
+                                        }} style={{padding:"5px 10px",background:"#fff3e0",color:"#e65100",border:"1px solid #ffcc80",borderRadius:7,cursor:"pointer",fontWeight:700,fontSize:12}}>
+                                          ⚠️
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <Badge status={a.statut}/>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {articles.some(a=>a.statut==="en attente") && (
+                            <div style={{padding:"12px 14px",borderTop:`1px solid ${C.greenBorder}`}}>
+                              <button onClick={async(e)=>{
+                                e.stopPropagation();
+                                for (const a of articles.filter(x=>x.statut==="en attente")) {
+                                  await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
+                                }
+                                setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>({...x,statut:x.statut==="en attente"?"validé":x.statut}))}));
+                                showToast("✅ Tout validé !");
+                              }} style={{width:"100%",padding:"10px",background:C.green,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                ✅ Tout valider
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
