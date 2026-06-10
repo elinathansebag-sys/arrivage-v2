@@ -205,6 +205,7 @@ export default function App() {
   const [obsAgr, setObsAgr]         = useState("");
   const [toast, setToast]           = useState(null);
   const [importing, setImporting]   = useState(false);
+  const [importMode, setImportMode]   = useState("excel");
   const [preview, setPreview]       = useState(null);
   const [selectedLot, setSelectedLot] = useState(null);
   const [agreeMode, setAgreeMode]   = useState(false);
@@ -1035,9 +1036,21 @@ export default function App() {
         {/* Page import Excel */}
         {page==="import" && (
           <div style={{...card}}>
-            <div style={{...cardTop}}><p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>📊 Import Excel (feuille Geslot)</p></div>
+            <div style={{...cardTop}}>
+              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:15,color:C.greenDark}}>📂 Import arrivages</p>
+              <div style={{display:"flex",gap:10,marginBottom:16}}>
+                <label style={{flex:1,padding:"12px",background:importMode==="excel"?C.green:C.greenLight,color:importMode==="excel"?"#fff":C.greenDark,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",border:`2px solid ${importMode==="excel"?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                  📊 Excel (.xlsx)
+                  <input type="file" accept=".xlsx,.xls" onChange={(e)=>{setImportMode("excel");handleExcelImport(e);}} style={{display:"none"}}/>
+                </label>
+                <label style={{flex:1,padding:"12px",background:importMode==="pdf"?C.green:C.greenLight,color:importMode==="pdf"?"#fff":C.greenDark,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",border:`2px solid ${importMode==="pdf"?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                  📄 PDF Geslot
+                  <input type="file" accept=".pdf" onChange={(e)=>{setImportMode("pdf");handlePDFImport(e);}} style={{display:"none"}}/>
+                </label>
+              </div>
+            </div>
             <div style={{...cardBody}}>
-              <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} style={{fontSize:14,marginBottom:16}}/>
+              <div style={{display:"none"}}/>
               {importing&&<p style={{color:C.textMuted}}>⏳ Traitement...</p>}
               {preview&&<>
                 <p style={{fontWeight:600,color:C.greenDark,marginBottom:12}}>✓ {preview.length} arrivages détectés</p>
