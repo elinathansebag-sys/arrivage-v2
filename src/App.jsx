@@ -1358,20 +1358,44 @@ export default function App() {
                                     )}
 
                                     {/* Bouton valider */}
-                                    {!hasLitige && (
-                                      <button onClick={async(e)=>{
-                                        e.stopPropagation();
-                                        await update(ref(db,`arrivages/${a.id}`),{
-                                          statut:"validé", agréeur:"Moorea", agreedAt:Date.now(),
-                                          colisRecu:edit.colisRecu||a.quantite,
-                                          controles:{qualite:edit.qualite,temperature:edit.temperature}
-                                        });
-                                        setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
-                                        showToast("✅ Validé");
-                                      }} style={{width:"100%",padding:"10px",background:C.green,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>
-                                        ✅ Confirmer conforme
-                                      </button>
-                                    )}
+                                    {!hasLitige && (()=>{
+                                      const colisOk = edit.colisRecu !== "" && edit.colisRecu !== undefined;
+                                      const qualiteOk = edit.qualite !== null && edit.qualite !== undefined;
+                                      const tempOk = edit.temperature !== null && edit.temperature !== undefined;
+                                      const allFilled = colisOk && qualiteOk && tempOk;
+                                      const missing = [];
+                                      if (!colisOk) missing.push("colis reçus");
+                                      if (!qualiteOk) missing.push("qualité");
+                                      if (!tempOk) missing.push("température");
+                                      return (
+                                        <div>
+                                          {!allFilled && (
+                                            <p style={{margin:"0 0 6px",fontSize:12,color:C.redText,fontWeight:600}}>
+                                              ⚠️ Remplir : {missing.join(", ")}
+                                            </p>
+                                          )}
+                                          <button onClick={async(e)=>{
+                                            e.stopPropagation();
+                                            if (!allFilled) { showToast("Remplissez tous les champs","err"); return; }
+                                            await update(ref(db,`arrivages/${a.id}`),{
+                                              statut:"validé", agréeur:"Moorea", agreedAt:Date.now(),
+                                              colisRecu:edit.colisRecu,
+                                              controles:{qualite:edit.qualite,temperature:edit.temperature}
+                                            });
+                                            setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
+                                            showToast("✅ Validé");
+                                          }} style={{
+                                            width:"100%", padding:"10px",
+                                            background: allFilled ? C.green : "#d1d5db",
+                                            color:"#fff", border:"none", borderRadius:10,
+                                            fontWeight:700, cursor: allFilled ? "pointer" : "not-allowed",
+                                            fontSize:14, opacity: allFilled ? 1 : 0.7
+                                          }}>
+                                            ✅ Confirmer conforme
+                                          </button>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 )}
                               </div>
