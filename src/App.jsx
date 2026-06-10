@@ -159,38 +159,6 @@ function Modal({ title, children, onClose }) {
           <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", fontSize:20, color:C.textMuted, lineHeight:1 }}>×</button>
         </div>
         <div style={cardBody}>{children}</div>
-        {/* Calculette arrivages */}
-        {(()=>{
-          const pointés = arrivages.filter(a => a.statut !== "en attente" && a.colisRecu);
-          const totalAttendu = pointés.reduce((s,a) => s + (parseInt(a.quantite)||0), 0);
-          const totalRecu = pointés.reduce((s,a) => s + (parseInt(a.colisRecu)||0), 0);
-          const totalEnAttente = enAttente.length;
-          if (arrivages.length === 0) return null;
-          return (
-            <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.greenBorder}`,padding:"16px",marginTop:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
-              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:13,color:C.greenDark,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧮 Récapitulatif du pointage</p>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                <div style={{background:C.greenLight,borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Articles</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:C.greenDark}}>{arrivages.filter(a=>a.statut!=="en attente").length}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{arrivages.length}</span></p>
-                </div>
-                <div style={{background:totalRecu===totalAttendu?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Colis reçus</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalRecu===totalAttendu?C.greenDark:"#7d5a00"}}>{totalRecu}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{totalAttendu}</span></p>
-                </div>
-                <div style={{background:totalEnAttente===0?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>En attente</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalEnAttente===0?C.greenDark:"#e6a817"}}>{totalEnAttente}</p>
-                </div>
-              </div>
-              {totalRecu !== totalAttendu && totalAttendu > 0 && (
-                <div style={{marginTop:8,background:"#fff8e6",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#7d5a00",fontWeight:600,textAlign:"center"}}>
-                  ⚠️ Écart total : {totalRecu - totalAttendu > 0 ? "+" : ""}{totalRecu - totalAttendu} colis
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
       </div>
     </div>
@@ -241,7 +209,9 @@ export default function App() {
   const [importMode, setImportMode]   = useState("excel");
   const [selectedFourn, setSelectedFourn] = useState(null);
   const [search, setSearch] = useState("");
-  const [openDates, setOpenDates] = useState({}); // {date: bool}
+  const [openDates, setOpenDates] = useState({});
+  const [mainTab, setMainTab] = useState("arrivages");
+  const [dateSearches, setDateSearches] = useState({}); // {date: searchStr}
   const [scanning, setScanning] = useState(false);
   const [articleEdits, setArticleEdits] = useState({}); // {id: {colisRecu, qualite, temperature, litiges}}
   const [preview, setPreview]       = useState(null);
@@ -1163,6 +1133,35 @@ export default function App() {
     }
   };
 
+
+  const scanEtiquetteForDate = async (file, targetDate) => {
+    setScanning(true);
+    showToast("⏳ Analyse…");
+    try {
+      const base64 = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 800; let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h*MAX/w); w = MAX; } else { w = Math.round(w*MAX/h); h = MAX; } }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+        };
+        img.src = URL.createObjectURL(file);
+      });
+      const response = await fetch("/api/scan-etiquette", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({base64, mediaType:file.type}) });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+      const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+      const q = (parsed.produit || parsed.fournisseur || "").toLowerCase();
+      setDateSearches(prev=>({...prev,[targetDate]:parsed.produit||parsed.fournisseur||""}));
+      showToast(`✅ "${parsed.produit||parsed.fournisseur}" — recherche lancée`);
+    } catch(err) {
+      showToast(`Erreur scan : ${err.message}`,"err");
+    } finally { setScanning(false); }
+  };
+
   // ── DASHBOARD PAR DATE / FOURNISSEUR ─────────────────────────────────────────
   const allArrivages = [...enAttente, ...traites];
   
@@ -1188,70 +1187,48 @@ export default function App() {
       <Toast/><Header/>
       <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 40px"}}>
 
-        {/* Stats + bouton import */}
-        <div style={{display:"flex",gap:12,marginBottom:16,alignItems:"stretch"}}>
-          <StatCard label="À agréer" value={enAttente.length} color="#e6a817"/>
-          <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
-          <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
-        </div>
-
-        {/* Résumé du jour — litiges et écarts */}
-        {(()=>{
-          const litiges = arrivages.filter(a => a.statut === "sous réserve" || a.statut === "refusé");
-          const avecEcart = arrivages.filter(a => a.colisRecu && parseInt(a.colisRecu) !== parseInt(a.quantite));
-          if (litiges.length === 0 && avecEcart.length === 0) return null;
-          return (
-            <div style={{background:"#fff8e6",border:"1.5px solid #ffe08a",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
-              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:13,color:"#7d5a00",textTransform:"uppercase",letterSpacing:"0.5px"}}>⚠️ Alertes du jour</p>
-              {litiges.length > 0 && (
-                <div style={{marginBottom:avecEcart.length>0?10:0}}>
-                  <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:"#c0392b"}}>❌ Litiges créés ({litiges.length})</p>
-                  {litiges.map(a=>(
-                    <div key={a.id} style={{background:"#fff",borderRadius:8,padding:"6px 10px",marginBottom:4,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fca5a5"}}>
-                      <span><strong>{a.produit}</strong> · {a.fournisseur}</span>
-                      <Badge status={a.statut}/>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {avecEcart.length > 0 && (
-                <div>
-                  <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:"#7d5a00"}}>📦 Écarts de colis ({avecEcart.length})</p>
-                  {avecEcart.map(a=>{
-                    const diff = parseInt(a.colisRecu) - parseInt(a.quantite);
-                    return (
-                      <div key={a.id} style={{background:"#fff",borderRadius:8,padding:"6px 10px",marginBottom:4,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #ffe08a"}}>
-                        <span><strong>{a.produit}</strong> · {a.fournisseur}</span>
-                        <span style={{fontWeight:700,color:diff<0?"#c0392b":"#27ae60"}}>{diff>0?"+":""}{diff} colis</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
         {/* Boutons d'import */}
-        <div style={{display:"flex",gap:10,marginBottom:20}}>
-          <label style={{flex:1,padding:"16px",background:C.green,color:"#fff",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
+        <div style={{display:"flex",gap:10,marginBottom:12}}>
+          <label style={{flex:1,padding:"13px",background:C.green,color:"#fff",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
             📄 Importer un PDF
             <input type="file" accept=".pdf" onChange={(e)=>{handlePDFImport(e); setPage("import");}} style={{display:"none"}}/>
           </label>
-          <label style={{flex:1,padding:"16px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <label style={{flex:1,padding:"13px",background:C.white,color:C.greenDark,borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             📊 Importer un Excel
             <input type="file" accept=".xlsx,.xls" onChange={(e)=>{handleExcelImport(e); setPage("import");}} style={{display:"none"}}/>
           </label>
         </div>
 
+        {/* Stats + onglets */}
+        <div style={{display:"flex",gap:10,marginBottom:16}}>
+          <StatCard label="À agréer" value={enAttente.length} color="#e6a817"/>
+          <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
+          <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
+        </div>
+
+        {/* Onglets Arrivages / Alertes */}
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          <button onClick={()=>setMainTab("arrivages")} style={{flex:1,padding:"10px",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${mainTab==="arrivages"?C.green:C.greenBorder}`,background:mainTab==="arrivages"?C.green:C.white,color:mainTab==="arrivages"?"#fff":C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+            📦 Arrivages
+          </button>
+          <button onClick={()=>setMainTab("alertes")} style={{flex:1,padding:"10px",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${mainTab==="alertes"?(C.redText):C.greenBorder}`,background:mainTab==="alertes"?C.red:C.white,color:mainTab==="alertes"?C.redText:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif",position:"relative"}}>
+            ⚠️ Alertes
+            {(()=>{
+              const n = arrivages.filter(a=>a.statut==="sous réserve"||a.statut==="refusé"||
+                (a.colisRecu && parseInt(a.colisRecu)!==parseInt(a.quantite))).length;
+              return n>0 ? <span style={{position:"absolute",top:-6,right:-6,background:C.redText,color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{n}</span> : null;
+            })()}
+          </button>
+        </div>
+
         {/* Preview import */}
         {page==="import" && preview && (
-          <div style={{...card,marginBottom:20}}>
+          <div style={{...card,marginBottom:16}}>
             <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>✅ {preview.length} arrivages détectés</p>
               <button onClick={()=>{setPreview(null);setPage("dashboard");}} style={{fontSize:12,padding:"6px 12px",borderRadius:8,cursor:"pointer",background:"transparent",border:`1px solid ${C.redBorder}`,color:C.redText}}>Annuler</button>
             </div>
-            <div style={{maxHeight:300,overflowY:"auto"}}>
+            <div style={{maxHeight:260,overflowY:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                 <thead><tr style={{background:"#f8faf9"}}>{["Lot","Fournisseur","Produit","Colis","Date"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${C.greenBorder}`}}>{h}</th>)}</tr></thead>
                 <tbody>{preview.map((a,i)=><tr key={i} style={{borderBottom:`1px solid ${C.greenBorder}22`}}>
@@ -1264,312 +1241,287 @@ export default function App() {
               </table>
             </div>
             <div style={{padding:"12px 20px"}}>
-              <button onClick={confirmImport} disabled={importing} style={{width:"100%",padding:"14px",background:importing?"#ccc":C.green,color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:importing?"default":"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                {importing?"Import en cours...":`Confirmer l'import de ${preview.length} arrivages →`}
+              <button onClick={confirmImport} disabled={importing} style={{width:"100%",padding:"13px",background:importing?"#ccc":C.green,color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:importing?"default":"pointer",fontSize:15,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                {importing?"Import en cours...":`✓ Confirmer l'import de ${preview.length} arrivages →`}
               </button>
             </div>
           </div>
         )}
 
-        {/* Barre de recherche + scanner */}
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <div style={{flex:1,position:"relative"}}>
-            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none"}}>🔍</span>
-            <input
-              value={search}
-              onChange={e=>setSearch(e.target.value)}
-              placeholder="Rechercher un produit, fournisseur, lot..."
-              style={{width:"100%",padding:"12px 16px 12px 38px",borderRadius:12,border:`1.5px solid ${C.greenBorder}`,fontSize:14,color:C.text,background:C.white,outline:"none",boxSizing:"border-box"}}
-            />
-            {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:C.textMuted}}>✕</button>}
-          </div>
-          <label style={{
-            display:"flex",alignItems:"center",gap:6,padding:"0 16px",
-            background:scanning?"#d1d5db":"linear-gradient(135deg,#3b82f6,#1d4ed8)",
-            color:"#fff",borderRadius:12,cursor:scanning?"not-allowed":"pointer",
-            fontWeight:700,fontSize:13,whiteSpace:"nowrap",
-            boxShadow:scanning?"none":"0 2px 8px rgba(59,130,246,0.4)",
-            pointerEvents:scanning?"none":"auto"
-          }}>
-            {scanning ? "⏳" : "📷 Scanner"}
-            <input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];if(f)scanEtiquette(f);e.target.value="";}} style={{display:"none"}}/>
-          </label>
-        </div>
-
-        {/* Dashboard principal — par date / fournisseur */}
-        {true && <>
-          {sortedDates.length === 0 ? (
+        {/* ── ONGLET ALERTES ── */}
+        {mainTab==="alertes" && (()=>{
+          const alertesByDate = {};
+          arrivages.forEach(a => {
+            const isLitige = a.statut==="sous réserve"||a.statut==="refusé";
+            const isEcart = a.colisRecu && parseInt(a.colisRecu)!==parseInt(a.quantite);
+            if (!isLitige && !isEcart) return;
+            const d = a.date||"Sans date";
+            if (!alertesByDate[d]) alertesByDate[d] = [];
+            alertesByDate[d].push({...a, isLitige, isEcart});
+          });
+          const alertDates = Object.keys(alertesByDate).sort((a,b)=>b.split('/').reverse().join('').localeCompare(a.split('/').reverse().join('')));
+          if (alertDates.length===0) return (
             <div style={{textAlign:"center",padding:"3rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}>
-              <div style={{fontSize:48,marginBottom:12}}>📦</div>
-              <p style={{fontWeight:700,fontSize:16,color:C.greenDark,margin:"0 0 8px"}}>Aucun arrivage</p>
-              <p style={{fontSize:14,color:C.textMuted}}>Importez un PDF ou Excel pour commencer</p>
+              <div style={{fontSize:48,marginBottom:12}}>✅</div>
+              <p style={{fontWeight:700,fontSize:16,color:C.greenDark}}>Aucune alerte</p>
             </div>
-          ) : sortedDates.map(date => {
-            // Filter by search
+          );
+          return alertDates.map(date => {
+            const items = alertesByDate[date];
+            const isOpen = openDates["alert_"+date] !== false;
+            return (
+              <div key={date} style={{marginBottom:16}}>
+                <div onClick={()=>setOpenDates(prev=>({...prev,["alert_"+date]:!isOpen}))}
+                  style={{display:"flex",alignItems:"center",gap:10,marginBottom:isOpen?10:0,cursor:"pointer",padding:"10px 14px",background:C.white,borderRadius:12,border:`1.5px solid ${C.redBorder}`,boxShadow:"0 2px 6px rgba(0,0,0,0.05)"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:C.redText,flex:1}}>📅 {date} · {items.length} alerte{items.length>1?"s":""}</span>
+                  <span style={{color:C.textMuted,fontSize:14,transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"0.2s"}}>▲</span>
+                </div>
+                {isOpen && (
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {items.map(a=>(
+                      <div key={a.id} style={{background:C.white,borderRadius:10,border:`1.5px solid ${a.isLitige?C.redBorder:"#ffe08a"}`,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <p style={{margin:"0 0 2px",fontWeight:700,fontSize:13,color:C.text}}>{a.produit}</p>
+                          <p style={{margin:0,fontSize:11,color:C.textMuted}}>{a.fournisseur} · Lot {a.lot_interne||"—"}</p>
+                          {a.isEcart && <p style={{margin:"3px 0 0",fontSize:11,color:"#7d5a00",fontWeight:600}}>📦 Écart : attendu {a.quantite}, reçu {a.colisRecu} ({parseInt(a.colisRecu)-parseInt(a.quantite)>0?"+":""}{parseInt(a.colisRecu)-parseInt(a.quantite)})</p>}
+                        </div>
+                        <Badge status={a.statut}/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
+
+        {/* ── ONGLET ARRIVAGES ── */}
+        {mainTab==="arrivages" && <>
+          {sortedDates.map(date => {
+            const isDateOpen = openDates[date] !== false;
+            // Per-date search state
+            const dateSearch = dateSearches[date] || "";
+
             const filteredFourns = Object.entries(byDate[date]).filter(([fourn, articles]) => {
-              if (!search) return true;
-              const q = search.toLowerCase();
+              if (!dateSearch) return true;
+              const q = dateSearch.toLowerCase();
               return fourn.toLowerCase().includes(q) ||
-                articles.some(a => 
+                articles.some(a =>
                   a.produit?.toLowerCase().includes(q) ||
-                  a.lot_interne?.toLowerCase().includes(q) ||
-                  a.origine?.toLowerCase().includes(q)
+                  a.lot_interne?.toLowerCase().includes(q)
                 );
             });
-            if (filteredFourns.length === 0) return null;
+            if (filteredFourns.length === 0 && dateSearch) return null;
+
             return (
-            <div key={date} style={{marginBottom:28}}>
-              {/* Header date accordion */}
-              <div onClick={()=>setOpenDates(prev=>({...prev,[date]:!prev[date]}))}
-                style={{display:"flex",alignItems:"center",gap:12,marginBottom:openDates[date]!==false?12:0,cursor:"pointer",userSelect:"none"}}>
-                <div style={{height:1,flex:1,background:C.greenBorder}}/>
-                <span style={{fontSize:13,fontWeight:700,color:C.greenDark,background:C.greenLight,padding:"4px 14px",borderRadius:20,border:`1px solid ${C.greenBorder}`,display:"flex",alignItems:"center",gap:6}}>
-                  📅 {date}
-                  <span style={{fontSize:11,color:C.textMuted}}>
-                    {Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length > 0
-                      ? `⏳ ${Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length}`
-                      : "✅"}
-                  </span>
-                  <span style={{fontSize:12,color:C.textMuted,transform:openDates[date]===false?"rotate(0)":"rotate(180deg)",display:"inline-block",transition:"transform 0.2s"}}>▲</span>
-                </span>
-                <div style={{height:1,flex:1,background:C.greenBorder}}/>
-              </div>
+              <div key={date} style={{marginBottom:16}}>
+                {/* Header date cliquable */}
+                <div onClick={()=>setOpenDates(prev=>({...prev,[date]:!isDateOpen}))}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:C.white,borderRadius:isDateOpen?"14px 14px 0 0":"14px",border:`1.5px solid ${C.greenBorder}`,cursor:"pointer",userSelect:"none",boxShadow:"0 2px 6px rgba(0,0,0,0.05)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:15,fontWeight:700,color:C.greenDark}}>📅 {date}</span>
+                    <span style={{fontSize:12,color:C.textMuted}}>
+                      {Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length > 0
+                        ? <span style={{background:"#fff8e6",color:"#7d5a00",padding:"2px 8px",borderRadius:8,fontWeight:600,fontSize:11}}>⏳ {Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length} en attente</span>
+                        : <span style={{background:C.greenLight,color:C.greenDark,padding:"2px 8px",borderRadius:8,fontWeight:600,fontSize:11}}>✅ Tout pointé</span>
+                      }
+                    </span>
+                  </div>
+                  <span style={{color:C.textMuted,fontSize:14,transform:isDateOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>▲</span>
+                </div>
 
-              {/* Liste fournisseurs accordion */}
-              {openDates[date]!==false && <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {filteredFourns.map(([fourn, articles]) => {
-                  const nbAttente = articles.filter(a=>a.statut==="en attente").length;
-                  const nbValide = articles.filter(a=>a.statut==="validé").length;
-                  const nbRefuse = articles.filter(a=>a.statut==="refusé"||a.statut==="sous réserve").length;
-                  const allDone = nbAttente === 0;
-                  const isOpen = selectedFourn?.fourn === fourn && selectedFourn?.date === date;
-                  
-                  return (
-                    <div key={fourn} style={{background:C.white,borderRadius:14,border:`2px solid ${allDone?C.greenBorder:nbRefuse>0?C.redBorder:"#e6a817"}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                      
-                      {/* Header row */}
-                      <div onClick={()=>setSelectedFourn(isOpen ? null : {date, fourn, articles})}
-                        style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",cursor:"pointer",background:allDone?C.greenLight:"#fff"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:12,flex:1}}>
-                          <span style={{fontSize:20}}>{allDone?"✅":nbRefuse>0?"⚠️":"⏳"}</span>
-                          <div>
-                            <p style={{margin:"0 0 2px",fontWeight:700,fontSize:15,color:C.text}}>{fourn}</p>
-                            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                              <span style={{fontSize:12,color:C.textMuted}}>{articles.length} article{articles.length>1?"s":""}</span>
-                              {nbAttente>0&&<span style={{fontSize:11,background:"#fff8e6",color:"#7d5a00",padding:"1px 8px",borderRadius:8,fontWeight:600}}>⏳ {nbAttente} en attente</span>}
-                              {nbValide>0&&<span style={{fontSize:11,background:C.greenLight,color:C.greenDark,padding:"1px 8px",borderRadius:8,fontWeight:600}}>✅ {nbValide}</span>}
-                              {nbRefuse>0&&<span style={{fontSize:11,background:C.red,color:C.redText,padding:"1px 8px",borderRadius:8,fontWeight:600}}>⚠️ {nbRefuse}</span>}
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{fontSize:18,color:C.textMuted,transform:isOpen?"rotate(45deg)":"rotate(0deg)",transition:"transform 0.2s",fontWeight:300}}>+</span>
+                {/* Contenu date */}
+                {isDateOpen && (
+                  <div style={{border:`1.5px solid ${C.greenBorder}`,borderTop:"none",borderRadius:"0 0 14px 14px",background:"#fafffe",padding:"12px"}}>
+                    {/* Recherche + scanner par date */}
+                    <div style={{display:"flex",gap:8,marginBottom:12}}>
+                      <div style={{flex:1,position:"relative"}}>
+                        <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>🔍</span>
+                        <input
+                          value={dateSearch}
+                          onChange={e=>setDateSearches(prev=>({...prev,[date]:e.target.value}))}
+                          placeholder="Produit, fournisseur, lot..."
+                          style={{width:"100%",padding:"9px 12px 9px 30px",borderRadius:8,border:`1.5px solid ${C.greenBorder}`,fontSize:13,color:C.text,background:C.white,outline:"none",boxSizing:"border-box"}}
+                        />
+                        {dateSearch && <button onClick={()=>setDateSearches(prev=>({...prev,[date]:""}))} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:C.textMuted}}>✕</button>}
                       </div>
+                      <label style={{display:"flex",alignItems:"center",gap:5,padding:"0 12px",background:scanning?"#d1d5db":"linear-gradient(135deg,#3b82f6,#1d4ed8)",color:"#fff",borderRadius:8,cursor:scanning?"not-allowed":"pointer",fontWeight:700,fontSize:12,whiteSpace:"nowrap",pointerEvents:scanning?"none":"auto"}}>
+                        {scanning?"⏳":"📷"}
+                        <input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];if(f){scanEtiquetteForDate(f,date);}e.target.value="";}} style={{display:"none"}}/>
+                      </label>
+                    </div>
 
-                      {/* Articles list */}
-                      {isOpen && (
-                        <div style={{borderTop:`1px solid ${C.greenBorder}`,padding:"12px 16px",display:"flex",flexDirection:"column",gap:12}}>
-                          {articles.map((a,i)=>{
-                            const edit = articleEdits[a.id] || {colisRecu:"",qualite:null,temperature:null,litige:false};
-                            const ecart = edit.colisRecu !== "" && parseInt(edit.colisRecu) !== parseInt(a.quantite);
-                            const manquants = ecart ? parseInt(a.quantite) - parseInt(edit.colisRecu) : 0;
-                            const hasLitige = edit.litige === true || edit.qualite === false || edit.temperature === false;
-                            // litige:false means explicitly "no litige" - only true triggers
-                            const colisOk = edit.colisRecu !== "";
-                            const qualiteOk = edit.qualite !== null;
-                            const tempOk = edit.temperature !== null;
-                            const allFilled = colisOk && qualiteOk && tempOk;
+                    {/* Fournisseurs */}
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {filteredFourns.map(([fourn, articles]) => {
+                        const nbAttente = articles.filter(a=>a.statut==="en attente").length;
+                        const nbValide = articles.filter(a=>a.statut==="validé").length;
+                        const nbRefuse = articles.filter(a=>a.statut==="refusé"||a.statut==="sous réserve").length;
+                        const allDone = nbAttente === 0;
+                        const isOpen = selectedFourn?.fourn === fourn && selectedFourn?.date === date;
 
-                            return (
-                              <div key={a.id} style={{background:a.statut!=="en attente"?(a.statut==="validé"?C.greenLight:C.red):C.white,borderRadius:12,border:`1.5px solid ${a.statut==="validé"?C.greenBorder:a.statut==="sous réserve"?"#ffe08a":C.greenBorder}`,overflow:"hidden"}}>
-                                {/* Header */}
-                                <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",background:a.statut==="validé"?C.greenLight:a.statut==="sous réserve"?"#fff8e6":"#fafffe",borderBottom:a.statut==="en attente"?`1px solid ${C.greenBorder}22`:"none"}}>
-                                  <div>
-                                    <p style={{margin:"0 0 2px",fontWeight:700,fontSize:13,color:C.text}}>{a.produit}</p>
-                                    <p style={{margin:0,fontSize:11,color:C.textMuted}}>Lot {a.lot_interne||"—"}</p>
-                                  </div>
-                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                    {a.statut!=="en attente"
-                                      ? <Badge status={a.statut}/>
-                                      : <span style={{background:"#fff8e6",border:"1px solid #ffe08a",borderRadius:8,padding:"3px 10px",fontSize:12,color:"#7d5a00",fontWeight:600}}>📦 {a.quantite} {a.unite}</span>
-                                    }
-                                    {a.statut!=="en attente" && (
-                                      <button onClick={async e=>{
-                                        e.stopPropagation();
-                                        await update(ref(db,`arrivages/${a.id}`),{statut:"en attente",agréeur:null,agreedAt:null,colisRecu:null,controles:null});
-                                        setArticleEdits(prev=>({...prev,[a.id]:{colisRecu:"",qualite:null,temperature:null,litige:false}}));
-                                        setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"en attente"}:x)}:prev);
-                                        showToast("↩ Remis en attente");
-                                      }} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.greenBorder}`,borderRadius:6,cursor:"pointer",fontSize:11,color:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                        ↩ Modifier
-                                      </button>
-                                    )}
+                        return (
+                          <div key={fourn} style={{background:C.white,borderRadius:12,border:`2px solid ${allDone?C.greenBorder:nbRefuse>0?C.redBorder:"#e6a817"}`,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                            <div onClick={()=>setSelectedFourn(isOpen?null:{date,fourn,articles})}
+                              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",cursor:"pointer",background:allDone?C.greenLight:"#fff"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+                                <span style={{fontSize:18}}>{allDone?"✅":nbRefuse>0?"⚠️":"⏳"}</span>
+                                <div>
+                                  <p style={{margin:"0 0 2px",fontWeight:700,fontSize:14,color:C.text}}>{fourn}</p>
+                                  <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                                    <span style={{fontSize:11,color:C.textMuted}}>{articles.length} article{articles.length>1?"s":""}</span>
+                                    {nbAttente>0&&<span style={{fontSize:10,background:"#fff8e6",color:"#7d5a00",padding:"1px 7px",borderRadius:8,fontWeight:600}}>⏳ {nbAttente}</span>}
+                                    {nbValide>0&&<span style={{fontSize:10,background:C.greenLight,color:C.greenDark,padding:"1px 7px",borderRadius:8,fontWeight:600}}>✅ {nbValide}</span>}
+                                    {nbRefuse>0&&<span style={{fontSize:10,background:C.red,color:C.redText,padding:"1px 7px",borderRadius:8,fontWeight:600}}>⚠️ {nbRefuse}</span>}
                                   </div>
                                 </div>
-
-                                {/* Controls si en attente */}
-                                {a.statut==="en attente" && (
-                                  <div style={{padding:"10px 14px"}}>
-                                    {/* Colis */}
-                                    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
-                                      <div style={{background:"#f8faf9",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:80}}>
-                                        <p style={{margin:"0 0 1px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Attendus</p>
-                                        <p style={{margin:0,fontSize:18,fontWeight:800,color:C.greenDark}}>{a.quantite}</p>
-                                      </div>
-                                      <span style={{color:C.textMuted}}>→</span>
-                                      <div style={{flex:1}}>
-                                        <p style={{margin:"0 0 3px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Reçus *</p>
-                                        <input type="number" placeholder="Saisir..." value={edit.colisRecu}
-                                          onClick={e=>e.stopPropagation()}
-                                          onChange={e=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,colisRecu:e.target.value}}))}
-                                          style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`2px solid ${ecart?"#e6a817":colisOk?C.green:C.greenBorder}`,fontSize:16,fontWeight:800,color:ecart?"#7d5a00":C.text,background:ecart?"#fff8e6":"#fff",outline:"none",boxSizing:"border-box"}}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    {/* 3 toggles */}
-                                    <div style={{display:"flex",gap:6,marginBottom:10}}>
-                                      {[
-                                        {key:"qualite",label:"Qualité",icon:"👁"},
-                                        {key:"temperature",label:"Température",icon:"🌡"},
-                                        {key:"litige",label:"Litige",icon:"⚠️"},
-                                      ].map(({key,label,icon})=>{
-                                        const val = edit[key];
-                                        const isLitige = key==="litige";
-                                        return (
-                                          <div key={key} style={{flex:1}}>
-                                            <p style={{margin:"0 0 4px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600,textAlign:"center"}}>{icon} {label}</p>
-                                            {isLitige ? (
-                                              <div style={{display:"flex",gap:3}}>
-                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:true}}));}}
-                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===true?"#fff3e0":"#f8faf9",color:val===true?"#e65100":C.textMuted,border:`2px solid ${val===true?"#ffcc80":C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                                  ⚠️ Oui
-                                                </button>
-                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:false}}));}}
-                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===false?C.greenLight:"#f8faf9",color:val===false?C.greenDark:C.textMuted,border:`2px solid ${val===false?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                                  ✓ Non
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <div style={{display:"flex",gap:3}}>
-                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:true}}));}}
-                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===true?C.greenLight:"#f8faf9",color:val===true?C.greenDark:C.textMuted,border:`2px solid ${val===true?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                                  ✓ Oui
-                                                </button>
-                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:false}}));}}
-                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===false?C.red:"#f8faf9",color:val===false?C.redText:C.textMuted,border:`2px solid ${val===false?C.redText:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                                  ✗ Non
-                                                </button>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-
-                                    {/* Manquants (écart sans litige) */}
-                                    {ecart && allFilled && !hasLitige && (
-                                      <div style={{background:"#fff8e6",border:"1px solid #ffe08a",borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:12,color:"#7d5a00",fontWeight:600}}>
-                                        📦 {manquants>0?`${manquants} colis manquants`:`${Math.abs(manquants)} colis en surplus`} · attendu {a.quantite}, reçu {edit.colisRecu}
-                                      </div>
-                                    )}
-
-                                    {/* Litige */}
-                                    {hasLitige && allFilled && (
-                                      <div style={{background:C.red,border:`1px solid ${C.redBorder}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-                                        <p style={{margin:"0 0 4px",fontWeight:700,fontSize:12,color:C.redText}}>❌ Litige</p>
-                                        {ecart && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>📦 {manquants>0?`${manquants} manquants`:`${Math.abs(manquants)} surplus`}</p>}
-                                        {edit.qualite===false && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>👁 Qualité non conforme</p>}
-                                        {edit.temperature===false && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>🌡 Température non conforme</p>}
-                                        <button onClick={e=>{
-                                          e.stopPropagation();
-                                          const params = new URLSearchParams({produit:a.produit||'',fournisseur:a.fournisseur||'',lot:a.lot_interne||'',quantite:a.quantite||'',colisRecu:edit.colisRecu||'',unite:a.unite||'',origine:a.origine||'',qualite:edit.qualite===false?"NON":"OK",temperature:edit.temperature===false?"NON":"OK"});
-                                          window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`,'_blank');
-                                          update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu});
-                                          setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"sous réserve"}:x)}:prev);
-                                        }} style={{width:"100%",padding:"7px",background:C.redText,color:"#fff",border:"none",borderRadius:7,fontWeight:700,cursor:"pointer",fontSize:12,marginTop:4}}>
-                                          📋 Créer rapport de litige →
-                                        </button>
-                                      </div>
-                                    )}
-
-                                    {/* Confirmer */}
-                                    {allFilled && !hasLitige && (
-                                      <button onClick={async e=>{
-                                        e.stopPropagation();
-                                        await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu,controles:{qualite:edit.qualite,temperature:edit.temperature}});
-                                        setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}:prev);
-                                        showToast("✅ Validé");
-                                      }} style={{width:"100%",padding:"10px",background:C.green,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",boxShadow:"0 3px 10px rgba(39,174,96,0.25)"}}>
-                                        ✅ Confirmer conforme
-                                      </button>
-                                    )}
-
-                                    {/* Incomplet */}
-                                    {!allFilled && (
-                                      <div style={{fontSize:11,color:C.textMuted,textAlign:"center",padding:"4px 0"}}>
-                                        {[!colisOk&&"colis reçus",!qualiteOk&&"qualité",!tempOk&&"température"].filter(Boolean).join(" · ")} à renseigner
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                               </div>
-                            );
-                          })}
-                          {articles.some(a=>a.statut==="en attente") && (
-                            <button onClick={async e=>{
-                              e.stopPropagation();
-                              for (const a of articles.filter(x=>x.statut==="en attente")) {
-                                await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
-                              }
-                              setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>({...x,statut:x.statut==="en attente"?"validé":x.statut}))}:prev);
-                              showToast("✅ Tout validé !");
-                            }} style={{width:"100%",padding:"10px",background:C.green,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                              ✅ Tout valider
-                            </button>
-                          )}
-                        </div>
-                      )}
+                              <span style={{fontSize:16,color:C.textMuted,transform:isOpen?"rotate(45deg)":"rotate(0deg)",transition:"0.2s",fontWeight:300}}>+</span>
+                            </div>
+
+                            {/* Articles inline */}
+                            {isOpen && (
+                              <div style={{borderTop:`1px solid ${C.greenBorder}`,padding:"12px",display:"flex",flexDirection:"column",gap:10}}>
+                                {articles.map((a,i)=>{
+                                  const edit = articleEdits[a.id] || {colisRecu:"",qualite:null,temperature:null,litige:false};
+                                  const ecart = edit.colisRecu !== "" && parseInt(edit.colisRecu) !== parseInt(a.quantite);
+                                  const manquants = ecart ? parseInt(a.quantite) - parseInt(edit.colisRecu) : 0;
+                                  const hasLitige = edit.litige === true || edit.qualite === false || edit.temperature === false;
+                                  const colisOk = edit.colisRecu !== "";
+                                  const qualiteOk = edit.qualite !== null;
+                                  const tempOk = edit.temperature !== null;
+                                  const allFilled = colisOk && qualiteOk && tempOk;
+
+                                  return (
+                                    <div key={a.id} style={{background:a.statut==="validé"?C.greenLight:a.statut==="sous réserve"?"#fff8e6":"#fff",borderRadius:10,border:`1.5px solid ${a.statut==="validé"?C.greenBorder:a.statut==="sous réserve"?"#ffe08a":C.greenBorder}`,overflow:"hidden"}}>
+                                      <div style={{padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:a.statut==="en attente"?`1px solid ${C.greenBorder}22`:"none"}}>
+                                        <div>
+                                          <p style={{margin:"0 0 1px",fontWeight:700,fontSize:13,color:C.text}}>{a.produit}</p>
+                                          <p style={{margin:0,fontSize:10,color:C.textMuted}}>Lot {a.lot_interne||"—"}</p>
+                                        </div>
+                                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                          {a.statut!=="en attente"
+                                            ? <Badge status={a.statut}/>
+                                            : <span style={{background:"#fff8e6",border:"1px solid #ffe08a",borderRadius:6,padding:"2px 8px",fontSize:11,color:"#7d5a00",fontWeight:600}}>📦 {a.quantite}</span>
+                                          }
+                                          {a.statut!=="en attente" && (
+                                            <button onClick={async e=>{
+                                              e.stopPropagation();
+                                              await update(ref(db,`arrivages/${a.id}`),{statut:"en attente",agréeur:null,agreedAt:null,colisRecu:null,controles:null});
+                                              setArticleEdits(prev=>({...prev,[a.id]:{colisRecu:"",qualite:null,temperature:null,litige:false}}));
+                                              setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"en attente"}:x)}:prev);
+                                              showToast("↩ Remis en attente");
+                                            }} style={{padding:"3px 7px",background:"transparent",border:`1px solid ${C.greenBorder}`,borderRadius:5,cursor:"pointer",fontSize:10,color:C.textMuted}}>
+                                              ↩
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {a.statut==="en attente" && (
+                                        <div style={{padding:"10px 12px"}}>
+                                          {/* Colis */}
+                                          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+                                            <div style={{background:"#f8faf9",borderRadius:7,padding:"6px 10px",textAlign:"center",minWidth:70}}>
+                                              <p style={{margin:"0 0 1px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Attendus</p>
+                                              <p style={{margin:0,fontSize:17,fontWeight:800,color:C.greenDark}}>{a.quantite}</p>
+                                            </div>
+                                            <span style={{color:C.textMuted,fontSize:16}}>→</span>
+                                            <div style={{flex:1}}>
+                                              <p style={{margin:"0 0 3px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Reçus *</p>
+                                              <input type="number" placeholder="Saisir..." value={edit.colisRecu}
+                                                onClick={e=>e.stopPropagation()}
+                                                onChange={e=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,colisRecu:e.target.value}}))}
+                                                style={{width:"100%",padding:"6px 9px",borderRadius:7,border:`2px solid ${ecart?"#e6a817":colisOk?C.green:C.greenBorder}`,fontSize:16,fontWeight:800,color:ecart?"#7d5a00":C.text,background:ecart?"#fff8e6":"#fff",outline:"none",boxSizing:"border-box"}}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* 3 toggles */}
+                                          <div style={{display:"flex",gap:6,marginBottom:10}}>
+                                            {[{key:"qualite",label:"Qualité",icon:"👁"},{key:"temperature",label:"Temp.",icon:"🌡"},{key:"litige",label:"Litige",icon:"⚠️"}].map(({key,label,icon})=>{
+                                              const val = edit[key];
+                                              const isLitige = key==="litige";
+                                              return (
+                                                <div key={key} style={{flex:1}}>
+                                                  <p style={{margin:"0 0 3px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600,textAlign:"center"}}>{icon} {label}</p>
+                                                  <div style={{display:"flex",gap:3}}>
+                                                    <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:true}}));}}
+                                                      style={{flex:1,padding:"6px 2px",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:11,background:val===true?(isLitige?"#fff3e0":C.greenLight):"#f8faf9",color:val===true?(isLitige?"#e65100":C.greenDark):C.textMuted,border:`2px solid ${val===true?(isLitige?"#ffcc80":C.green):C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                                      {isLitige?"⚠️":"✓"} Oui
+                                                    </button>
+                                                    <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:false}}));}}
+                                                      style={{flex:1,padding:"6px 2px",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:11,background:val===false?(isLitige?C.greenLight:C.red):"#f8faf9",color:val===false?(isLitige?C.greenDark:C.redText):C.textMuted,border:`2px solid ${val===false?(isLitige?C.green:C.redText):C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                                      {isLitige?"✓":"✗"} Non
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+
+                                          {/* Écart colis (sans litige) */}
+                                          {ecart && allFilled && !hasLitige && (
+                                            <div style={{background:"#fff8e6",border:"1px solid #ffe08a",borderRadius:7,padding:"7px 10px",marginBottom:8,fontSize:12,color:"#7d5a00",fontWeight:600}}>
+                                              📦 {manquants>0?`${manquants} colis manquants`:`${Math.abs(manquants)} en surplus`} — attendu {a.quantite}, reçu {edit.colisRecu}
+                                            </div>
+                                          )}
+
+                                          {/* Litige */}
+                                          {hasLitige && allFilled && (
+                                            <div style={{background:C.red,border:`1px solid ${C.redBorder}`,borderRadius:7,padding:"7px 10px",marginBottom:8}}>
+                                              <p style={{margin:"0 0 3px",fontWeight:700,fontSize:11,color:C.redText}}>❌ Litige</p>
+                                              {ecart && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>📦 {manquants>0?`${manquants} manquants`:`${Math.abs(manquants)} surplus`}</p>}
+                                              {edit.qualite===false && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>👁 Qualité non conforme</p>}
+                                              {edit.temperature===false && <p style={{margin:"0 0 2px",fontSize:11,color:C.redText}}>🌡 Température non conforme</p>}
+                                              <button onClick={e=>{
+                                                e.stopPropagation();
+                                                const params = new URLSearchParams({produit:a.produit||'',fournisseur:a.fournisseur||'',lot:a.lot_interne||'',quantite:a.quantite||'',colisRecu:edit.colisRecu||'',unite:a.unite||'',origine:a.origine||'',qualite:edit.qualite===false?"NON":"OK",temperature:edit.temperature===false?"NON":"OK"});
+                                                window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`,'_blank');
+                                                update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu});
+                                                setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"sous réserve"}:x)}:prev);
+                                              }} style={{width:"100%",padding:"7px",background:C.redText,color:"#fff",border:"none",borderRadius:6,fontWeight:700,cursor:"pointer",fontSize:12,marginTop:4}}>
+                                                📋 Créer rapport de litige →
+                                              </button>
+                                            </div>
+                                          )}
+
+                                          {/* Confirmer */}
+                                          {allFilled && !hasLitige && (
+                                            <button onClick={async e=>{
+                                              e.stopPropagation();
+                                              await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu,controles:{qualite:edit.qualite,temperature:edit.temperature}});
+                                              setSelectedFourn(prev=>prev?{...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}:prev);
+                                              showToast("✅ Validé");
+                                            }} style={{width:"100%",padding:"9px",background:C.green,color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"'Segoe UI',system-ui,sans-serif",boxShadow:"0 3px 8px rgba(39,174,96,0.25)"}}>
+                                              ✅ Confirmer conforme
+                                            </button>
+                                          )}
+
+                                          {/* Incomplet */}
+                                          {!allFilled && (
+                                            <div style={{fontSize:11,color:C.textMuted,textAlign:"center",padding:"3px 0"}}>
+                                              {[!colisOk&&"colis reçus",!qualiteOk&&"qualité",!tempOk&&"température"].filter(Boolean).join(" · ")} à renseigner
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>}
-            </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </>}
-
-        {/* Calculette arrivages */}
-        {(()=>{
-          const pointés = arrivages.filter(a => a.statut !== "en attente" && a.colisRecu);
-          const totalAttendu = pointés.reduce((s,a) => s + (parseInt(a.quantite)||0), 0);
-          const totalRecu = pointés.reduce((s,a) => s + (parseInt(a.colisRecu)||0), 0);
-          const totalEnAttente = enAttente.length;
-          if (arrivages.length === 0) return null;
-          return (
-            <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.greenBorder}`,padding:"16px",marginTop:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
-              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:13,color:C.greenDark,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧮 Récapitulatif du pointage</p>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                <div style={{background:C.greenLight,borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Articles</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:C.greenDark}}>{arrivages.filter(a=>a.statut!=="en attente").length}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{arrivages.length}</span></p>
-                </div>
-                <div style={{background:totalRecu===totalAttendu?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Colis reçus</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalRecu===totalAttendu?C.greenDark:"#7d5a00"}}>{totalRecu}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{totalAttendu}</span></p>
-                </div>
-                <div style={{background:totalEnAttente===0?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
-                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>En attente</p>
-                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalEnAttente===0?C.greenDark:"#e6a817"}}>{totalEnAttente}</p>
-                </div>
-              </div>
-              {totalRecu !== totalAttendu && totalAttendu > 0 && (
-                <div style={{marginTop:8,background:"#fff8e6",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#7d5a00",fontWeight:600,textAlign:"center"}}>
-                  ⚠️ Écart total : {totalRecu - totalAttendu > 0 ? "+" : ""}{totalRecu - totalAttendu} colis
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
       </div>
     </div>
