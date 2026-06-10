@@ -159,6 +159,39 @@ function Modal({ title, children, onClose }) {
           <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", fontSize:20, color:C.textMuted, lineHeight:1 }}>×</button>
         </div>
         <div style={cardBody}>{children}</div>
+        {/* Calculette arrivages */}
+        {(()=>{
+          const pointés = arrivages.filter(a => a.statut !== "en attente" && a.colisRecu);
+          const totalAttendu = pointés.reduce((s,a) => s + (parseInt(a.quantite)||0), 0);
+          const totalRecu = pointés.reduce((s,a) => s + (parseInt(a.colisRecu)||0), 0);
+          const totalEnAttente = enAttente.length;
+          if (arrivages.length === 0) return null;
+          return (
+            <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.greenBorder}`,padding:"16px",marginTop:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:13,color:C.greenDark,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧮 Récapitulatif du pointage</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div style={{background:C.greenLight,borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Articles</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:C.greenDark}}>{arrivages.filter(a=>a.statut!=="en attente").length}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{arrivages.length}</span></p>
+                </div>
+                <div style={{background:totalRecu===totalAttendu?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Colis reçus</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalRecu===totalAttendu?C.greenDark:"#7d5a00"}}>{totalRecu}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{totalAttendu}</span></p>
+                </div>
+                <div style={{background:totalEnAttente===0?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>En attente</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalEnAttente===0?C.greenDark:"#e6a817"}}>{totalEnAttente}</p>
+                </div>
+              </div>
+              {totalRecu !== totalAttendu && totalAttendu > 0 && (
+                <div style={{marginTop:8,background:"#fff8e6",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#7d5a00",fontWeight:600,textAlign:"center"}}>
+                  ⚠️ Écart total : {totalRecu - totalAttendu > 0 ? "+" : ""}{totalRecu - totalAttendu} colis
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       </div>
     </div>
   );
@@ -208,6 +241,7 @@ export default function App() {
   const [importMode, setImportMode]   = useState("excel");
   const [selectedFourn, setSelectedFourn] = useState(null);
   const [search, setSearch] = useState("");
+  const [openDates, setOpenDates] = useState({}); // {date: bool}
   const [articleEdits, setArticleEdits] = useState({}); // {id: {colisRecu, qualite, temperature, litiges}}
   const [preview, setPreview]       = useState(null);
   const [selectedLot, setSelectedLot] = useState(null);
@@ -1093,6 +1127,43 @@ export default function App() {
           <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
         </div>
 
+        {/* Résumé du jour — litiges et écarts */}
+        {(()=>{
+          const litiges = arrivages.filter(a => a.statut === "sous réserve" || a.statut === "refusé");
+          const avecEcart = arrivages.filter(a => a.colisRecu && parseInt(a.colisRecu) !== parseInt(a.quantite));
+          if (litiges.length === 0 && avecEcart.length === 0) return null;
+          return (
+            <div style={{background:"#fff8e6",border:"1.5px solid #ffe08a",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
+              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:13,color:"#7d5a00",textTransform:"uppercase",letterSpacing:"0.5px"}}>⚠️ Alertes du jour</p>
+              {litiges.length > 0 && (
+                <div style={{marginBottom:avecEcart.length>0?10:0}}>
+                  <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:"#c0392b"}}>❌ Litiges créés ({litiges.length})</p>
+                  {litiges.map(a=>(
+                    <div key={a.id} style={{background:"#fff",borderRadius:8,padding:"6px 10px",marginBottom:4,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fca5a5"}}>
+                      <span><strong>{a.produit}</strong> · {a.fournisseur}</span>
+                      <Badge status={a.statut}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {avecEcart.length > 0 && (
+                <div>
+                  <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:"#7d5a00"}}>📦 Écarts de colis ({avecEcart.length})</p>
+                  {avecEcart.map(a=>{
+                    const diff = parseInt(a.colisRecu) - parseInt(a.quantite);
+                    return (
+                      <div key={a.id} style={{background:"#fff",borderRadius:8,padding:"6px 10px",marginBottom:4,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #ffe08a"}}>
+                        <span><strong>{a.produit}</strong> · {a.fournisseur}</span>
+                        <span style={{fontWeight:700,color:diff<0?"#c0392b":"#27ae60"}}>{diff>0?"+":""}{diff} colis</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Boutons d'import */}
         <div style={{display:"flex",gap:10,marginBottom:20}}>
           <label style={{flex:1,padding:"16px",background:C.green,color:"#fff",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
@@ -1166,17 +1237,24 @@ export default function App() {
             if (filteredFourns.length === 0) return null;
             return (
             <div key={date} style={{marginBottom:28}}>
-              {/* Header date */}
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+              {/* Header date accordion */}
+              <div onClick={()=>setOpenDates(prev=>({...prev,[date]:!prev[date]}))}
+                style={{display:"flex",alignItems:"center",gap:12,marginBottom:openDates[date]!==false?12:0,cursor:"pointer",userSelect:"none"}}>
                 <div style={{height:1,flex:1,background:C.greenBorder}}/>
-                <span style={{fontSize:13,fontWeight:700,color:C.greenDark,background:C.greenLight,padding:"4px 14px",borderRadius:20,border:`1px solid ${C.greenBorder}`}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.greenDark,background:C.greenLight,padding:"4px 14px",borderRadius:20,border:`1px solid ${C.greenBorder}`,display:"flex",alignItems:"center",gap:6}}>
                   📅 {date}
+                  <span style={{fontSize:11,color:C.textMuted}}>
+                    {Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length > 0
+                      ? `⏳ ${Object.values(byDate[date]).flat().filter(a=>a.statut==="en attente").length}`
+                      : "✅"}
+                  </span>
+                  <span style={{fontSize:12,color:C.textMuted,transform:openDates[date]===false?"rotate(0)":"rotate(180deg)",display:"inline-block",transition:"transform 0.2s"}}>▲</span>
                 </span>
                 <div style={{height:1,flex:1,background:C.greenBorder}}/>
               </div>
 
               {/* Liste fournisseurs accordion */}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {openDates[date]!==false && <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {filteredFourns.map(([fourn, articles]) => {
                   const nbAttente = articles.filter(a=>a.statut==="en attente").length;
                   const nbValide = articles.filter(a=>a.statut==="validé").length;
@@ -1213,6 +1291,7 @@ export default function App() {
                             const ecart = edit.colisRecu !== "" && parseInt(edit.colisRecu) !== parseInt(a.quantite);
                             const manquants = ecart ? parseInt(a.quantite) - parseInt(edit.colisRecu) : 0;
                             const hasLitige = edit.litige === true || edit.qualite === false || edit.temperature === false;
+                            // litige:false means explicitly "no litige" - only true triggers
                             const colisOk = edit.colisRecu !== "";
                             const qualiteOk = edit.qualite !== null;
                             const tempOk = edit.temperature !== null;
@@ -1278,10 +1357,16 @@ export default function App() {
                                           <div key={key} style={{flex:1}}>
                                             <p style={{margin:"0 0 4px",fontSize:9,color:C.textMuted,textTransform:"uppercase",fontWeight:600,textAlign:"center"}}>{icon} {label}</p>
                                             {isLitige ? (
-                                              <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:!edit.litige}}));}}
-                                                style={{width:"100%",padding:"7px 4px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,background:val?"#fff3e0":"#f8faf9",color:val?"#e65100":C.textMuted,border:`2px solid ${val?"#ffcc80":C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                                                {val?"⚠️ Oui":"— Non"}
-                                              </button>
+                                              <div style={{display:"flex",gap:3}}>
+                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:true}}));}}
+                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===true?"#fff3e0":"#f8faf9",color:val===true?"#e65100":C.textMuted,border:`2px solid ${val===true?"#ffcc80":C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                                  ⚠️ Oui
+                                                </button>
+                                                <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:false}}));}}
+                                                  style={{flex:1,padding:"7px 2px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:11,background:val===false?C.greenLight:"#f8faf9",color:val===false?C.greenDark:C.textMuted,border:`2px solid ${val===false?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                                  ✓ Non
+                                                </button>
+                                              </div>
                                             ) : (
                                               <div style={{display:"flex",gap:3}}>
                                                 <button onClick={e=>{e.stopPropagation();setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:true}}));}}
@@ -1365,11 +1450,44 @@ export default function App() {
                     </div>
                   );
                 })}
-              </div>
+              </div>}
             </div>
             );
           })}
         </>}
+
+        {/* Calculette arrivages */}
+        {(()=>{
+          const pointés = arrivages.filter(a => a.statut !== "en attente" && a.colisRecu);
+          const totalAttendu = pointés.reduce((s,a) => s + (parseInt(a.quantite)||0), 0);
+          const totalRecu = pointés.reduce((s,a) => s + (parseInt(a.colisRecu)||0), 0);
+          const totalEnAttente = enAttente.length;
+          if (arrivages.length === 0) return null;
+          return (
+            <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.greenBorder}`,padding:"16px",marginTop:8,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:13,color:C.greenDark,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧮 Récapitulatif du pointage</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div style={{background:C.greenLight,borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Articles</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:C.greenDark}}>{arrivages.filter(a=>a.statut!=="en attente").length}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{arrivages.length}</span></p>
+                </div>
+                <div style={{background:totalRecu===totalAttendu?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Colis reçus</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalRecu===totalAttendu?C.greenDark:"#7d5a00"}}>{totalRecu}<span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>/{totalAttendu}</span></p>
+                </div>
+                <div style={{background:totalEnAttente===0?C.greenLight:"#fff8e6",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                  <p style={{margin:"0 0 2px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>En attente</p>
+                  <p style={{margin:0,fontSize:20,fontWeight:800,color:totalEnAttente===0?C.greenDark:"#e6a817"}}>{totalEnAttente}</p>
+                </div>
+              </div>
+              {totalRecu !== totalAttendu && totalAttendu > 0 && (
+                <div style={{marginTop:8,background:"#fff8e6",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#7d5a00",fontWeight:600,textAlign:"center"}}>
+                  ⚠️ Écart total : {totalRecu - totalAttendu > 0 ? "+" : ""}{totalRecu - totalAttendu} colis
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       </div>
     </div>
