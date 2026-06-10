@@ -1047,19 +1047,16 @@ export default function App() {
           <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
         </div>
 
-        {/* Boutons d'action */}
+        {/* Boutons d'import */}
         <div style={{display:"flex",gap:10,marginBottom:20}}>
-          <label style={{flex:1,padding:"14px",background:C.green,color:"#fff",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:"none",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
+          <label style={{flex:1,padding:"16px",background:C.green,color:"#fff",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
             📄 Importer un PDF
             <input type="file" accept=".pdf" onChange={(e)=>{handlePDFImport(e); setPage("import");}} style={{display:"none"}}/>
           </label>
-          <label style={{flex:1,padding:"14px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <label style={{flex:1,padding:"16px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             📊 Importer un Excel
             <input type="file" accept=".xlsx,.xls" onChange={(e)=>{handleExcelImport(e); setPage("import");}} style={{display:"none"}}/>
           </label>
-          <button onClick={()=>setPage("saisie")} style={{flex:1,padding:"14px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-            ✏️ Saisie manuelle
-          </button>
         </div>
 
         {/* Preview import */}
@@ -1086,14 +1083,6 @@ export default function App() {
                 {importing?"Import en cours...":`Confirmer l'import de ${preview.length} arrivages →`}
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Saisie manuelle */}
-        {page==="saisie" && (
-          <div>
-            <button onClick={()=>setPage("dashboard")} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textMuted,fontSize:14,padding:"0 0 16px",display:"flex",alignItems:"center",gap:4}}>‹ Retour</button>
-            <SaisieForm/>
           </div>
         )}
 
