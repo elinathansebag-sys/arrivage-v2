@@ -206,6 +206,7 @@ export default function App() {
   const [toast, setToast]           = useState(null);
   const [importing, setImporting]   = useState(false);
   const [importMode, setImportMode]   = useState("excel");
+  const [selectedFourn, setSelectedFourn] = useState(null); // {date, fourn, articles}
   const [preview, setPreview]       = useState(null);
   const [selectedLot, setSelectedLot] = useState(null);
   const [agreeMode, setAgreeMode]   = useState(false);
@@ -1007,6 +1008,100 @@ export default function App() {
     </div>
   );
 
+  // Supplier detail view
+  if (selectedFourn) return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      <Toast/>
+      <Header extraNav={
+        <button onClick={()=>setSelectedFourn(null)} style={{padding:"9px 20px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600,border:`2px solid ${C.greenBorder}`,background:C.white,color:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>← Retour</button>
+      }/>
+      <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 40px"}}>
+        {/* Header fournisseur */}
+        <div style={{...card}}>
+          <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <p style={{margin:"0 0 4px",fontWeight:700,fontSize:18,color:C.greenDark}}>🏭 {selectedFourn.fourn}</p>
+              <p style={{margin:0,fontSize:13,color:C.textMuted}}>📅 {selectedFourn.date} · {selectedFourn.articles.length} article{selectedFourn.articles.length>1?"s":""}</p>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <p style={{margin:"0 0 2px",fontSize:13,color:C.textMuted}}>En attente</p>
+              <p style={{margin:0,fontSize:24,fontWeight:800,color:"#e6a817"}}>{selectedFourn.articles.filter(a=>a.statut==="en attente").length}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Liste des articles */}
+        <div style={card}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+            <thead>
+              <tr style={{background:"#f8faf9"}}>
+                {["Lot","Produit","Colis","Statut","Action"].map(h=>(
+                  <th key={h} style={{padding:"12px 14px",textAlign:"left",fontSize:12,fontWeight:700,color:C.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${C.greenBorder}`}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {selectedFourn.articles.map((a,i)=>(
+                <tr key={a.id} style={{borderBottom:`1px solid ${C.greenBorder}22`,background:i%2===0?"#fafffe":"#fff"}}>
+                  <td style={{padding:"12px 14px",fontSize:12,color:C.textMuted,fontWeight:600}}>{a.lot_interne||"—"}</td>
+                  <td style={{padding:"12px 14px",fontWeight:600,color:C.text}}>{a.produit}{a.variete?` · ${a.variete}`:""}</td>
+                  <td style={{padding:"12px 14px",textAlign:"center",fontWeight:700}}>{a.quantite} <span style={{fontSize:11,color:C.textMuted}}>{a.unite}</span></td>
+                  <td style={{padding:"12px 14px"}}>
+                    <Badge status={a.statut}/>
+                  </td>
+                  <td style={{padding:"12px 14px"}}>
+                    {a.statut==="en attente" && (
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={async()=>{
+                          await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
+                          setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
+                          showToast("✅ Validé");
+                        }} style={{padding:"6px 12px",background:C.green,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                          ✅ Conforme
+                        </button>
+                        <button onClick={()=>{
+                          const params = new URLSearchParams({
+                            produit: a.produit||'',
+                            fournisseur: a.fournisseur||'',
+                            lot: a.lot_interne||'',
+                            quantite: a.quantite||'',
+                            unite: a.unite||'',
+                            origine: a.origine||'',
+                          });
+                          window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`, '_blank');
+                          update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now()});
+                          setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"sous réserve"}:x)}));
+                        }} style={{padding:"6px 12px",background:"#fff3e0",color:"#e65100",border:"1.5px solid #ffcc80",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                          ⚠️ Litige
+                        </button>
+                      </div>
+                    )}
+                    {a.statut!=="en attente" && (
+                      <span style={{fontSize:12,color:C.textMuted}}>{a.agréeur||"—"}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Bouton tout valider */}
+        {selectedFourn.articles.some(a=>a.statut==="en attente") && (
+          <button onClick={async()=>{
+            for (const a of selectedFourn.articles.filter(x=>x.statut==="en attente")) {
+              await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
+            }
+            setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>({...x,statut:x.statut==="en attente"?"validé":x.statut}))}));
+            showToast("✅ Tout validé !");
+          }} style={{width:"100%",padding:"16px",background:C.green,color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif",boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
+            ✅ Valider tous les articles conformes
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   if (selected) return (
     <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
       <Toast/><PhotoMissingPopup/>
@@ -1115,9 +1210,7 @@ export default function App() {
                   
                   return (
                     <div key={fourn} onClick={()=>{
-                      // Sélectionner le premier article en attente de ce fournisseur
-                      const first = articles.find(a=>a.statut==="en attente") || articles[0];
-                      if (first) { setSelected(first); setNotes(INIT_CONTROLE); setDecision(""); setObsAgr(""); }
+                      setSelectedFourn({date, fourn, articles});
                     }} style={{
                       background: allDone ? C.greenLight : C.white,
                       border: `2px solid ${allDone ? C.green : nbRefuse > 0 ? C.redBorder : "#e6a817"}`,
