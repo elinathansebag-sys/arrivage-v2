@@ -1081,59 +1081,144 @@ export default function App() {
         </div>
 
         {/* Liste des articles */}
-        <div style={card}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-            <thead>
-              <tr style={{background:"#f8faf9"}}>
-                {["Lot","Produit","Colis","Statut","Action"].map(h=>(
-                  <th key={h} style={{padding:"12px 14px",textAlign:"left",fontSize:12,fontWeight:700,color:C.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${C.greenBorder}`}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {selectedFourn.articles.map((a,i)=>(
-                <tr key={a.id} style={{borderBottom:`1px solid ${C.greenBorder}22`,background:i%2===0?"#fafffe":"#fff"}}>
-                  <td style={{padding:"12px 14px",fontSize:12,color:C.textMuted,fontWeight:600}}>{a.lot_interne||"—"}</td>
-                  <td style={{padding:"12px 14px",fontWeight:600,color:C.text}}>{a.produit}{a.variete?` · ${a.variete}`:""}</td>
-                  <td style={{padding:"12px 14px",textAlign:"center",fontWeight:700}}>{a.quantite} <span style={{fontSize:11,color:C.textMuted}}>{a.unite}</span></td>
-                  <td style={{padding:"12px 14px"}}>
-                    <Badge status={a.statut}/>
-                  </td>
-                  <td style={{padding:"12px 14px"}}>
-                    {a.statut==="en attente" && (
-                      <div style={{display:"flex",gap:6}}>
-                        <button onClick={async()=>{
-                          await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now()});
-                          setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
-                          showToast("✅ Validé");
-                        }} style={{padding:"6px 12px",background:C.green,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                          ✅ Conforme
-                        </button>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {selectedFourn.articles.map((a,i)=>{
+            const edit = articleEdits[a.id] || {colisRecu:"",qualite:null,temperature:null,litige:false};
+            const ecart = edit.colisRecu !== "" && parseInt(edit.colisRecu) !== parseInt(a.quantite);
+            const hasLitige = edit.litige === true || ecart;
+            const colisOk = edit.colisRecu !== "";
+            const qualiteOk = edit.qualite !== null;
+            const tempOk = edit.temperature !== null;
+            const allFilled = colisOk && qualiteOk && tempOk;
+
+            return (
+              <div key={a.id} style={{background:C.white,borderRadius:14,border:`1.5px solid ${a.statut!=="en attente"?(a.statut==="validé"?C.greenBorder:C.redBorder):C.greenBorder}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
+                
+                {/* Header article */}
+                <div style={{padding:"12px 16px",background:a.statut!=="en attente"?(a.statut==="validé"?C.greenLight:C.red):"#fafffe",borderBottom:`1px solid ${C.greenBorder}22`,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <p style={{margin:"0 0 2px",fontWeight:700,fontSize:14,color:C.text}}>{a.produit}</p>
+                    <p style={{margin:0,fontSize:11,color:C.textMuted}}>Lot {a.lot_interne||"—"}</p>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    {a.statut!=="en attente" ? <Badge status={a.statut}/> : (
+                      <div style={{background:"#fff8e6",border:"1px solid #ffe08a",borderRadius:8,padding:"4px 10px",fontSize:12,color:"#7d5a00",fontWeight:600}}>
+                        📦 {a.quantite} {a.unite} attendus
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contrôles si en attente */}
+                {a.statut==="en attente" && (
+                  <div style={{padding:"12px 16px"}}>
+                    
+                    {/* Colis reçus */}
+                    <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12}}>
+                      <div style={{flex:1,background:"#f8faf9",borderRadius:8,padding:"8px 12px",textAlign:"center"}}>
+                        <p style={{margin:"0 0 1px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Attendus</p>
+                        <p style={{margin:0,fontSize:20,fontWeight:800,color:C.greenDark}}>{a.quantite}</p>
+                      </div>
+                      <span style={{fontSize:18,color:C.textMuted}}>→</span>
+                      <div style={{flex:1}}>
+                        <p style={{margin:"0 0 4px",fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600}}>Colis reçus *</p>
+                        <input
+                          type="number"
+                          placeholder="Saisir..."
+                          value={edit.colisRecu}
+                          onChange={e=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,colisRecu:e.target.value}}))}
+                          style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`2px solid ${ecart?"#e6a817":colisOk?C.green:C.greenBorder}`,fontSize:18,fontWeight:800,color:ecart?"#7d5a00":C.text,background:ecart?"#fff8e6":"#fff",outline:"none",boxSizing:"border-box"}}
+                        />
+                        {ecart && <p style={{margin:"3px 0 0",fontSize:11,color:"#7d5a00",fontWeight:700}}>⚠️ Écart {parseInt(edit.colisRecu)-parseInt(a.quantite)>0?"+":""}{parseInt(edit.colisRecu)-parseInt(a.quantite)} colis</p>}
+                      </div>
+                    </div>
+
+                    {/* 3 toggles */}
+                    <div style={{display:"flex",gap:8,marginBottom:12}}>
+                      {[
+                        {key:"qualite", label:"Qualité", icon:"👁", okLabel:"✓ OK", nokLabel:"✗ NON"},
+                        {key:"temperature", label:"Température", icon:"🌡", okLabel:"✓ OK", nokLabel:"✗ NON"},
+                        {key:"litige", label:"Litige", icon:"⚠️", okLabel:"Signalé", nokLabel:"—"},
+                      ].map(({key,label,icon,okLabel,nokLabel})=>{
+                        const val = edit[key];
+                        const isOk = val === true;
+                        const isNok = val === false;
+                        const isLitige = key === "litige";
+                        return (
+                          <div key={key} style={{flex:1,display:"flex",flexDirection:"column",gap:4}}>
+                            <p style={{margin:0,fontSize:10,color:C.textMuted,textTransform:"uppercase",fontWeight:600,textAlign:"center"}}>{icon} {label}</p>
+                            <div style={{display:"flex",gap:4}}>
+                              {isLitige ? (
+                                <button onClick={()=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,litige:!edit.litige}}))}
+                                  style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,
+                                    background:edit.litige?"#fff3e0":"#f8faf9",
+                                    color:edit.litige?"#e65100":C.textMuted,
+                                    border:`2px solid ${edit.litige?"#ffcc80":C.greenBorder}`,
+                                    fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                  {edit.litige?"⚠️ Oui":"— Non"}
+                                </button>
+                              ) : (
+                                <>
+                                  <button onClick={()=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:true}}))}
+                                    style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,
+                                      background:isOk?C.greenLight:"#f8faf9",color:isOk?C.greenDark:C.textMuted,
+                                      border:`2px solid ${isOk?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                    ✓ Oui
+                                  </button>
+                                  <button onClick={()=>setArticleEdits(prev=>({...prev,[a.id]:{...edit,[key]:false}}))}
+                                    style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,
+                                      background:isNok?C.red:"#f8faf9",color:isNok?C.redText:C.textMuted,
+                                      border:`2px solid ${isNok?C.redText:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                                    ✗ Non
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Section litige */}
+                    {hasLitige && (
+                      <div style={{background:"#fff3e0",border:"1.5px solid #ffcc80",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                        <p style={{margin:"0 0 6px",fontWeight:700,fontSize:12,color:"#7d5a00"}}>⚠️ Litige détecté</p>
+                        {ecart && <p style={{margin:"0 0 6px",fontSize:12,color:"#92400e"}}>Écart : attendu {a.quantite}, reçu {edit.colisRecu} ({parseInt(edit.colisRecu)-parseInt(a.quantite)>0?"+":""}{parseInt(edit.colisRecu)-parseInt(a.quantite)})</p>}
+                        {edit.qualite===false && <p style={{margin:"0 0 4px",fontSize:12,color:"#92400e"}}>Qualité non conforme</p>}
+                        {edit.temperature===false && <p style={{margin:"0 0 4px",fontSize:12,color:"#92400e"}}>Température non conforme</p>}
                         <button onClick={()=>{
-                          const params = new URLSearchParams({
-                            produit: a.produit||'',
-                            fournisseur: a.fournisseur||'',
-                            lot: a.lot_interne||'',
-                            quantite: a.quantite||'',
-                            unite: a.unite||'',
-                            origine: a.origine||'',
-                          });
-                          window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`, '_blank');
-                          update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now()});
+                          const params = new URLSearchParams({produit:a.produit||'',fournisseur:a.fournisseur||'',lot:a.lot_interne||'',quantite:a.quantite||'',colisRecu:edit.colisRecu||'',unite:a.unite||'',origine:a.origine||'',qualite:edit.qualite===false?"NON":"OK",temperature:edit.temperature===false?"NON":"OK"});
+                          window.open(`https://moorea-qualite.vercel.app/?${params.toString()}`,'_blank');
+                          update(ref(db,`arrivages/${a.id}`),{statut:"sous réserve",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu});
                           setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"sous réserve"}:x)}));
-                        }} style={{padding:"6px 12px",background:"#fff3e0",color:"#e65100",border:"1.5px solid #ffcc80",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                          ⚠️ Litige
+                        }} style={{width:"100%",padding:"8px",background:"#e65100",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13}}>
+                          📋 Créer un rapport de litige →
                         </button>
                       </div>
                     )}
-                    {a.statut!=="en attente" && (
-                      <span style={{fontSize:12,color:C.textMuted}}>{a.agréeur||"—"}</span>
+
+                    {/* Bouton confirmer — visible seulement si tout rempli et pas de litige */}
+                    {!hasLitige && allFilled && (
+                      <button onClick={async()=>{
+                        await update(ref(db,`arrivages/${a.id}`),{statut:"validé",agréeur:"Moorea",agreedAt:Date.now(),colisRecu:edit.colisRecu,controles:{qualite:edit.qualite,temperature:edit.temperature}});
+                        setSelectedFourn(prev=>({...prev,articles:prev.articles.map(x=>x.id===a.id?{...x,statut:"validé"}:x)}));
+                        showToast("✅ Validé");
+                      }} style={{width:"100%",padding:"12px",background:C.green,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:"'Segoe UI',system-ui,sans-serif",boxShadow:"0 4px 12px rgba(39,174,96,0.25)"}}>
+                        ✅ Confirmer conforme
+                      </button>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+                    {/* Message si incomplet */}
+                    {!hasLitige && !allFilled && (
+                      <div style={{background:"#f8faf9",borderRadius:8,padding:"8px 12px",fontSize:12,color:C.textMuted,textAlign:"center"}}>
+                        {[!colisOk&&"colis reçus",!qualiteOk&&"qualité",!tempOk&&"température"].filter(Boolean).join(" · ")} à renseigner
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Bouton tout valider */}
