@@ -371,6 +371,49 @@ export default function App() {
     showToast(`${preview.length} arrivages importés ✓`);
   };
 
+
+  // Import PDF (format Journal des arrivages Geslot)
+  const handlePDFImport = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.mjs');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.mjs';
+        const pdf = await pdfjsLib.getDocument({data: ev.target.result}).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const tc = await page.getTextContent();
+          fullText += tc.items.map(item => item.str).join(' ') + '\n';
+        }
+        const arr = [];
+        let lot = '', fournisseur = '', date = '';
+        const lines = fullText.split(/\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          const lotMatch = trimmed.match(/Lot\s+(\d+)\s+Fournisseur\s+\d+\s+(.+?)\s+Date arriv[eé]e\s+(\d{2}\/\d{2}\/\d{4})/);
+          if (lotMatch) { lot = lotMatch[1]; fournisseur = lotMatch[2].trim(); date = lotMatch[3]; continue; }
+          if (!lot || trimmed.startsWith('SL ') || trimmed.startsWith('Totaux') || trimmed.startsWith('Total') || trimmed.startsWith('PAGE') || trimmed.startsWith('DATE') || trimmed.startsWith('JOURNAL') || trimmed.startsWith('Pour le') || trimmed.startsWith('MOOREA COMMERCE')) continue;
+          const slMatch = trimmed.match(/^(\d{2})\s+(\d+)/);
+          if (slMatch && lot) {
+            const nbColis = parseInt(slMatch[2]) || 0;
+            const afterNums = trimmed.replace(/^\d{2}\s+[\d\s,.CUK]+/, '').trim();
+            const libelle = afterNums.replace(/[\d,.]+\s*[CUK]?\s*[\d,.]*$/, '').trim();
+            if (nbColis > 0 && libelle.length > 3) {
+              arr.push({ lot_interne:lot, lot_fournisseur:'', fournisseur, date, produit:libelle, variete:'', origine:'', quantite:String(nbColis), unite:'colis', poids_net:'', poids_colis:'', transporteur:'', temp_annoncee:'', commentaire:'' });
+            }
+          }
+        }
+        if (arr.length === 0) { showToast("Aucun arrivage détecté dans le PDF","err"); setImporting(false); setPage("dashboard"); return; }
+        setPreview(arr); setImporting(false);
+      } catch(err) { showToast("Erreur PDF : " + err.message, "err"); setImporting(false); }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
   // Validation agrément — with photo-missing popup
   const attemptValidation = (targetId) => {
     const id = targetId || selected?.id;
