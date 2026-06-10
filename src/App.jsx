@@ -1015,98 +1015,155 @@ export default function App() {
     </div>
   );
 
+  // ── DASHBOARD PAR DATE / FOURNISSEUR ─────────────────────────────────────────
+  const allArrivages = [...enAttente, ...traites];
+  
+  // Grouper par date puis par fournisseur
+  const byDate = {};
+  allArrivages.forEach(a => {
+    const d = a.date || "Sans date";
+    if (!byDate[d]) byDate[d] = {};
+    const f = a.fournisseur || "Inconnu";
+    if (!byDate[d][f]) byDate[d][f] = [];
+    byDate[d][f].push(a);
+  });
+  
+  // Trier les dates (plus récentes en premier)
+  const sortedDates = Object.keys(byDate).sort((a, b) => {
+    const pa = a.split('/').reverse().join('');
+    const pb = b.split('/').reverse().join('');
+    return pb.localeCompare(pa);
+  });
+
   return (
     <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
       <Toast/><Header/>
-      <div style={{maxWidth:720,margin:"0 auto",padding:"0 20px 40px"}}>
+      <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 40px"}}>
 
-        {/* Stats */}
-        <div style={{display:"flex",gap:12,marginBottom:16}}>
-          <StatCard label="À traiter" value={enAttente.length} color="#e6a817"/>
+        {/* Stats + bouton import */}
+        <div style={{display:"flex",gap:12,marginBottom:16,alignItems:"stretch"}}>
+          <StatCard label="À agréer" value={enAttente.length} color="#e6a817"/>
           <StatCard label="Validés" value={traites.filter(a=>a.statut==="validé").length} color={C.greenDark}/>
           <StatCard label="Refusés" value={traites.filter(a=>a.statut==="refusé").length} color={C.redText}/>
         </div>
 
-        {/* Navigation tabs */}
-        <NavTabs/>
+        {/* Boutons d'action */}
+        <div style={{display:"flex",gap:10,marginBottom:20}}>
+          <label style={{flex:1,padding:"14px",background:C.green,color:"#fff",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:"none",fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(39,174,96,0.3)"}}>
+            📄 Importer un PDF
+            <input type="file" accept=".pdf" onChange={(e)=>{handlePDFImport(e); setPage("import");}} style={{display:"none"}}/>
+          </label>
+          <label style={{flex:1,padding:"14px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            📊 Importer un Excel
+            <input type="file" accept=".xlsx,.xls" onChange={(e)=>{handleExcelImport(e); setPage("import");}} style={{display:"none"}}/>
+          </label>
+          <button onClick={()=>setPage("saisie")} style={{flex:1,padding:"14px",background:C.white,color:C.greenDark,borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"center",border:`2px solid ${C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+            ✏️ Saisie manuelle
+          </button>
+        </div>
 
-        {/* Page saisie */}
-        {page==="saisie" && <SaisieForm/>}
-
-        {/* Page import Excel */}
-        {page==="import" && (
-          <div style={{...card}}>
-            <div style={{...cardTop}}>
-              <p style={{margin:"0 0 12px",fontWeight:700,fontSize:15,color:C.greenDark}}>📂 Import arrivages</p>
-              <div style={{display:"flex",gap:10,marginBottom:16}}>
-                <label style={{flex:1,padding:"12px",background:importMode==="excel"?C.green:C.greenLight,color:importMode==="excel"?"#fff":C.greenDark,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",border:`2px solid ${importMode==="excel"?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                  📊 Excel (.xlsx)
-                  <input type="file" accept=".xlsx,.xls" onChange={(e)=>{setImportMode("excel");handleExcelImport(e);}} style={{display:"none"}}/>
-                </label>
-                <label style={{flex:1,padding:"12px",background:importMode==="pdf"?C.green:C.greenLight,color:importMode==="pdf"?"#fff":C.greenDark,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,textAlign:"center",border:`2px solid ${importMode==="pdf"?C.green:C.greenBorder}`,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-                  📄 PDF Geslot
-                  <input type="file" accept=".pdf" onChange={(e)=>{setImportMode("pdf");handlePDFImport(e);}} style={{display:"none"}}/>
-                </label>
-              </div>
+        {/* Preview import */}
+        {page==="import" && preview && (
+          <div style={{...card,marginBottom:20}}>
+            <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{margin:0,fontWeight:700,fontSize:15,color:C.greenDark}}>✅ {preview.length} arrivages détectés</p>
+              <button onClick={()=>{setPreview(null);setPage("dashboard");}} style={{fontSize:12,padding:"6px 12px",borderRadius:8,cursor:"pointer",background:"transparent",border:`1px solid ${C.redBorder}`,color:C.redText}}>Annuler</button>
             </div>
-            <div style={{...cardBody}}>
-              <div style={{display:"none"}}/>
-              {importing&&<p style={{color:C.textMuted}}>⏳ Traitement...</p>}
-              {preview&&<>
-                <p style={{fontWeight:600,color:C.greenDark,marginBottom:12}}>✓ {preview.length} arrivages détectés</p>
-                {preview.slice(0,5).map((a,i)=><div key={i} style={{background:C.greenLight,borderRadius:8,padding:"8px 12px",marginBottom:6,fontSize:13}}><strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}</div>)}
-                {preview.length>5&&<p style={{fontSize:12,color:C.textMuted}}>...et {preview.length-5} autres</p>}
-                <button onClick={confirmImport} style={{width:"100%",padding:"13px",background:C.green,color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:"'Segoe UI',system-ui,sans-serif",marginTop:12}}>
-                  ✓ Confirmer l'import
-                </button>
-              </>}
+            <div style={{maxHeight:300,overflowY:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr style={{background:"#f8faf9"}}>{["Lot","Fournisseur","Produit","Colis","Date"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",borderBottom:`2px solid ${C.greenBorder}`}}>{h}</th>)}</tr></thead>
+                <tbody>{preview.map((a,i)=><tr key={i} style={{borderBottom:`1px solid ${C.greenBorder}22`}}>
+                  <td style={{padding:"7px 12px",color:C.textMuted,fontSize:12}}>{a.lot_interne}</td>
+                  <td style={{padding:"7px 12px",fontWeight:500}}>{a.fournisseur}</td>
+                  <td style={{padding:"7px 12px"}}>{a.produit}</td>
+                  <td style={{padding:"7px 12px",textAlign:"center"}}><strong>{a.quantite}</strong></td>
+                  <td style={{padding:"7px 12px",color:C.textMuted,fontSize:12}}>{a.date}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <div style={{padding:"12px 20px"}}>
+              <button onClick={confirmImport} disabled={importing} style={{width:"100%",padding:"14px",background:importing?"#ccc":C.green,color:"#fff",border:"none",borderRadius:14,fontWeight:700,cursor:importing?"default":"pointer",fontSize:16,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+                {importing?"Import en cours...":`Confirmer l'import de ${preview.length} arrivages →`}
+              </button>
             </div>
           </div>
         )}
 
-        {/* Page suivi */}
-        {page==="suivi" && <>
-          <button onClick={()=>setHorsListeMode(true)} style={{width:"100%",marginBottom:16,padding:"13px",background:"#fff3e0",color:"#e65100",border:"1.5px solid #ffcc80",borderRadius:14,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            ⚠️ Signaler un litige hors liste
-          </button>
-          <FilterBar filters={filters} onChange={setFilters} inputStyle={inputStyle}/>
-          {filteredEA.length===0&&enAttente.length===0?(
-            <div style={{textAlign:"center",padding:"2.5rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}>
-              <div style={{fontSize:32,marginBottom:8}}>✅</div>
-              <p style={{margin:0,fontWeight:700,color:C.greenDark}}>Tout est traité !</p>
+        {/* Saisie manuelle */}
+        {page==="saisie" && (
+          <div>
+            <button onClick={()=>setPage("dashboard")} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textMuted,fontSize:14,padding:"0 0 16px",display:"flex",alignItems:"center",gap:4}}>‹ Retour</button>
+            <SaisieForm/>
+          </div>
+        )}
+
+        {/* Dashboard principal — par date / fournisseur */}
+        {page==="dashboard" && <>
+          {sortedDates.length === 0 ? (
+            <div style={{textAlign:"center",padding:"3rem",background:C.greenLight,border:`1px solid ${C.greenBorder}`,borderRadius:20}}>
+              <div style={{fontSize:48,marginBottom:12}}>📦</div>
+              <p style={{fontWeight:700,fontSize:16,color:C.greenDark,margin:"0 0 8px"}}>Aucun arrivage</p>
+              <p style={{fontSize:14,color:C.textMuted}}>Importez un PDF ou Excel pour commencer</p>
             </div>
-          ):<>
-            {filteredEA.length>0&&<>
-              <p style={{fontWeight:700,fontSize:14,color:C.greenDark,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>⏳ En attente d'agrément</p>
-              {filteredEA.map(a=>(
-                <div key={a.id} onClick={()=>{setSelected(a);setNotes(INIT_CONTROLE);setDecision("");setObsAgr("");}} style={{...card,cursor:"pointer",borderLeft:"4px solid #e6a817"}}>
-                  <div style={{...cardTop,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <p style={{margin:"0 0 6px",fontWeight:700,fontSize:16,color:C.greenDark}}>{a.produit}{a.variete&&` · ${a.variete}`}</p>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Pill>🏭 {a.fournisseur}</Pill><Pill>📦 {a.quantite} {a.unite}</Pill>{a.lot_interne&&<Pill>🔖 {a.lot_interne}</Pill>}{a.origine&&<Pill>🌍 {a.origine}</Pill>}</div>
-                    </div>
-                    <span style={{fontSize:20,color:C.textMuted}}>›</span>
-                  </div>
-                  <div style={{...cardBody,paddingTop:10,paddingBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <p style={{margin:0,fontSize:12,color:C.textMuted}}>{a.date}</p>
-                    <Badge status="en attente"/>
-                  </div>
-                </div>
-              ))}
-            </>}
-          </>}
-          {filteredTraites.length>0&&<>
-            <p style={{fontWeight:700,fontSize:14,color:C.textMuted,margin:"24px 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>✅ Traités récemment</p>
-            {filteredTraites.slice(0,10).map(a=>(
-              <div key={a.id} style={{background:C.white,borderRadius:12,padding:"10px 16px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                <div>
-                  <p style={{margin:"0 0 2px",fontSize:14,fontWeight:600,color:C.text}}>{a.produit} · {a.fournisseur}{a.hors_liste&&<span style={{marginLeft:8,fontSize:11,background:"#fff3e0",color:"#e65100",padding:"2px 8px",borderRadius:10,fontWeight:600}}>Hors liste</span>}</p>
-                  <p style={{margin:0,fontSize:12,color:C.textMuted}}>{a.date}</p>
-                </div>
-                <Badge status={a.statut}/>
+          ) : sortedDates.map(date => (
+            <div key={date} style={{marginBottom:28}}>
+              {/* Header date */}
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                <div style={{height:1,flex:1,background:C.greenBorder}}/>
+                <span style={{fontSize:13,fontWeight:700,color:C.greenDark,background:C.greenLight,padding:"4px 14px",borderRadius:20,border:`1px solid ${C.greenBorder}`}}>
+                  📅 {date}
+                </span>
+                <div style={{height:1,flex:1,background:C.greenBorder}}/>
               </div>
-            ))}
-          </>}
+
+              {/* Bulles fournisseurs */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                {Object.entries(byDate[date]).map(([fourn, articles]) => {
+                  const nbAttente = articles.filter(a=>a.statut==="en attente").length;
+                  const nbValide = articles.filter(a=>a.statut==="validé").length;
+                  const nbRefuse = articles.filter(a=>a.statut==="refusé"||a.statut==="sous réserve").length;
+                  const allDone = nbAttente === 0;
+                  
+                  return (
+                    <div key={fourn} onClick={()=>{
+                      // Sélectionner le premier article en attente de ce fournisseur
+                      const first = articles.find(a=>a.statut==="en attente") || articles[0];
+                      if (first) { setSelected(first); setNotes(INIT_CONTROLE); setDecision(""); setObsAgr(""); }
+                    }} style={{
+                      background: allDone ? C.greenLight : C.white,
+                      border: `2px solid ${allDone ? C.green : nbRefuse > 0 ? C.redBorder : "#e6a817"}`,
+                      borderRadius:16, padding:"14px 18px", cursor:"pointer",
+                      minWidth:160, maxWidth:220,
+                      boxShadow: allDone ? "none" : "0 4px 16px rgba(0,0,0,0.08)",
+                      transition:"transform 0.15s, box-shadow 0.15s",
+                      position:"relative"
+                    }}
+                    onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.12)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=allDone?"none":"0 4px 16px rgba(0,0,0,0.08)";}}>
+                      
+                      {/* Badge statut */}
+                      {allDone ? (
+                        <span style={{position:"absolute",top:8,right:8,fontSize:16}}>✅</span>
+                      ) : nbRefuse > 0 ? (
+                        <span style={{position:"absolute",top:8,right:8,fontSize:16}}>⚠️</span>
+                      ) : (
+                        <span style={{position:"absolute",top:8,right:8,background:"#e6a817",color:"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10}}>{nbAttente}</span>
+                      )}
+
+                      <p style={{margin:"0 0 4px",fontWeight:700,fontSize:14,color:allDone?C.greenDark:C.text,paddingRight:30}}>{fourn}</p>
+                      <p style={{margin:"0 0 8px",fontSize:12,color:C.textMuted}}>{articles.length} article{articles.length>1?"s":""}</p>
+                      
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {nbAttente>0&&<span style={{fontSize:11,background:"#fff8e6",color:"#7d5a00",padding:"2px 8px",borderRadius:8,fontWeight:600}}>⏳ {nbAttente} en attente</span>}
+                        {nbValide>0&&<span style={{fontSize:11,background:C.greenLight,color:C.greenDark,padding:"2px 8px",borderRadius:8,fontWeight:600}}>✅ {nbValide} validé{nbValide>1?"s":""}</span>}
+                        {nbRefuse>0&&<span style={{fontSize:11,background:C.red,color:C.redText,padding:"2px 8px",borderRadius:8,fontWeight:600}}>⚠️ {nbRefuse} litige{nbRefuse>1?"s":""}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </>}
 
       </div>
