@@ -206,7 +206,8 @@ export default function App() {
   const [toast, setToast]           = useState(null);
   const [importing, setImporting]   = useState(false);
   const [importMode, setImportMode]   = useState("excel");
-  const [selectedFourn, setSelectedFourn] = useState(null); // {date, fourn, articles}
+  const [selectedFourn, setSelectedFourn] = useState(null);
+  const [search, setSearch] = useState("");
   const [preview, setPreview]       = useState(null);
   const [selectedLot, setSelectedLot] = useState(null);
   const [agreeMode, setAgreeMode]   = useState(false);
@@ -1015,6 +1016,11 @@ export default function App() {
       <Header extraNav={
         <button onClick={()=>setSelectedFourn(null)} style={{padding:"9px 20px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600,border:`2px solid ${C.greenBorder}`,background:C.white,color:C.textMuted,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>← Retour</button>
       }/>
+      <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 8px"}}>
+        <button onClick={()=>setSelectedFourn(null)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:"none",cursor:"pointer",color:C.textMuted,fontSize:14,padding:"8px 0",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+          ‹ Retour aux arrivages
+        </button>
+      </div>
       <div style={{maxWidth:800,margin:"0 auto",padding:"0 20px 40px"}}>
         {/* Header fournisseur */}
         <div style={{...card}}>
@@ -1181,6 +1187,17 @@ export default function App() {
           </div>
         )}
 
+        {/* Barre de recherche */}
+        <div style={{marginBottom:16,position:"relative"}}>
+          <input
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+            placeholder="🔍 Rechercher un produit, fournisseur, lot..."
+            style={{width:"100%",padding:"12px 16px 12px 16px",borderRadius:12,border:`1.5px solid ${C.greenBorder}`,fontSize:14,color:C.text,background:C.white,outline:"none",boxSizing:"border-box"}}
+          />
+          {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:C.textMuted}}>✕</button>}
+        </div>
+
         {/* Dashboard principal — par date / fournisseur */}
         {true && <>
           {sortedDates.length === 0 ? (
@@ -1189,7 +1206,20 @@ export default function App() {
               <p style={{fontWeight:700,fontSize:16,color:C.greenDark,margin:"0 0 8px"}}>Aucun arrivage</p>
               <p style={{fontSize:14,color:C.textMuted}}>Importez un PDF ou Excel pour commencer</p>
             </div>
-          ) : sortedDates.map(date => (
+          ) : sortedDates.map(date => {
+            // Filter by search
+            const filteredFourns = Object.entries(byDate[date]).filter(([fourn, articles]) => {
+              if (!search) return true;
+              const q = search.toLowerCase();
+              return fourn.toLowerCase().includes(q) ||
+                articles.some(a => 
+                  a.produit?.toLowerCase().includes(q) ||
+                  a.lot_interne?.toLowerCase().includes(q) ||
+                  a.origine?.toLowerCase().includes(q)
+                );
+            });
+            if (filteredFourns.length === 0) return null;
+            return (
             <div key={date} style={{marginBottom:28}}>
               {/* Header date */}
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -1202,7 +1232,7 @@ export default function App() {
 
               {/* Liste fournisseurs accordion */}
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {Object.entries(byDate[date]).map(([fourn, articles]) => {
+                {filteredFourns.map(([fourn, articles]) => {
                   const nbAttente = articles.filter(a=>a.statut==="en attente").length;
                   const nbValide = articles.filter(a=>a.statut==="validé").length;
                   const nbRefuse = articles.filter(a=>a.statut==="refusé"||a.statut==="sous réserve").length;
@@ -1297,7 +1327,8 @@ export default function App() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </>}
 
       </div>
